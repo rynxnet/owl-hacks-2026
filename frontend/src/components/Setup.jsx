@@ -7,8 +7,25 @@ const PERSONAS = [
   { id: 'rapid', label: 'Rapid-fire panel', blurb: 'Short, fast follow-ups' },
 ];
 
+const ROLE_IDEAS = [
+  'Software Engineering Intern',
+  'SOC Analyst',
+  'IT Help Desk Technician',
+  'Data Analyst',
+  'Registered Nurse',
+  'Financial Analyst',
+  'Marketing Coordinator',
+  'High School Teacher',
+  'Mechanical Engineer',
+  'Product Manager',
+  'UX Designer',
+  'Paralegal',
+  'Barista',
+];
+
 export default function Setup({ onStart }) {
   const [role, setRole] = useState('Software Engineering Intern');
+  const [jobDetails, setJobDetails] = useState('');
   const [persona, setPersona] = useState('cold');
   const [questions, setQuestions] = useState(6);
   const [health, setHealth] = useState(null);
@@ -24,7 +41,7 @@ export default function Setup({ onStart }) {
   async function start() {
     setError('');
     try {
-      const s = await api.startSession({ role, persona, maxQuestions: questions });
+      const s = await api.startSession({ role: role.trim(), jobDetails: jobDetails.trim(), persona, maxQuestions: questions });
       onStart(s);
     } catch (e) {
       setError('Could not reach the backend. Is it running on port 3001?');
@@ -38,7 +55,30 @@ export default function Setup({ onStart }) {
 
       <label>
         Role you're interviewing for
-        <input value={role} onChange={(e) => setRole(e.target.value)} />
+        <input
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          list="role-ideas"
+          maxLength={120}
+          placeholder="Any job: SOC Analyst, Registered Nurse, Barista..."
+        />
+      </label>
+      <datalist id="role-ideas">
+        {ROLE_IDEAS.map((r) => (
+          <option key={r} value={r} />
+        ))}
+      </datalist>
+      <p className="hint">The interviewer becomes the hiring manager for this job and asks questions only someone hiring for it would ask.</p>
+
+      <label>
+        Job posting or details <span className="optional">(optional)</span>
+        <textarea
+          value={jobDetails}
+          onChange={(e) => setJobDetails(e.target.value)}
+          maxLength={4000}
+          rows={4}
+          placeholder="Paste the job description, the company name, or what the job involves. The interviewer will ask about it."
+        />
       </label>
 
       <div className="label">Interviewer</div>
@@ -75,7 +115,7 @@ export default function Setup({ onStart }) {
       {health?.sensorStatus && <p className="sensor-hint">📷 {health.sensorStatus}</p>}
 
       {error && <p className="error">{error}</p>}
-      <button className="primary" onClick={start} disabled={!health}>
+      <button className="primary" onClick={start} disabled={!health || !role.trim()}>
         Start interview
       </button>
     </div>

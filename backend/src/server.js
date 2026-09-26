@@ -8,8 +8,10 @@ import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { config } from './config.js';
 import { StressEngine } from './stress.js';
+import { VitalsFilter, PULSE_LOST_HINT } from './vitalsFilter.js';
 import { nextTurn, feedback, PERSONAS } from './interviewer.js';
 import { speak } from './voice.js';
+import { normalizeRole, normalizeJobDetails, roleBrief } from './roles.js';
 import { db, dbEnabled } from './db.js';
 import { presageAvailable, presageLoadError, createPresageSession } from './presage.js';
 
@@ -56,11 +58,13 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.post('/api/sessions', (req, res) => {
-  const { persona = 'friendly', role = 'Software Engineering Intern', maxQuestions = 6 } = req.body || {};
+  const { persona = 'friendly', role, jobDetails, maxQuestions = 6 } = req.body || {};
+  // Whatever the candidate typed in the Role box (and an optional job posting) drives the interviewer.
   const s = {
     id: crypto.randomUUID(),
     persona: PERSONAS[persona] ? persona : 'friendly',
-    role,
+    role: normalizeRole(role),
+    jobDetails: normalizeJobDetails(jobDetails),
     maxQuestions: Math.min(Math.max(Number(maxQuestions) || 6, 1), 15),
     startedAt: Date.now(),
     engine: new StressEngine(),
@@ -73,7 +77,9 @@ app.post('/api/sessions', (req, res) => {
   sessions.set(s.id, s);
   activeSessionId = s.id;
   db.createSession(s);
-  res.json({ id: s.id, persona: s.persona, baselineMs: config.baselineMs });
+  const brief = roleBrief(s.role, s.jobDetails);
+  console.log(`[session] ${s.id.slice(0, 8)} role="${s.role}" track=${brief.track} level=${brief.seniority}${s.jobDetails ? ` jobDetails=${s.jobDetails.length} chars` : ''}`);
+  res.json({ id: s.id, persona: s.persona, role: s.role, track: brief.track, baselineMs: config.baselineMs });
 });
 
 // One interview turn: store the candidate's answer (if any), get the interviewer's next line.
@@ -124,6 +130,7 @@ async function runTurn(s, answer) {
   const turn = await nextTurn({
     persona: s.persona,
     role: s.role,
+    jobDetails: s.jobDetails,
     history: s.utterances,
     state,
     questionCount: s.questionCount,
@@ -195,6 +202,7 @@ function startFeedback(s) {
     try {
       const raw = await feedback({
         role: s.role,
+        jobDetails: s.jobDetails,
         history: s.utterances,
         spikes: findSpikes(s),
       });
@@ -255,6 +263,7 @@ function replay(s) {
   return {
     id: s.id,
     role: s.role,
+    jobDetails: s.jobDetails || null,
     persona: s.persona,
     startedAt: s.startedAt,
     endedAt: s.endedAt ?? null,
@@ -363,16 +372,42 @@ function setSensorStatus(s, status) {
 }
 
 // One heart-rate reading from any source (simulator, laptop bridge, or server-side Presage).
+// msg: { hr, br?, hrv?, confidence?, stable?, ts? }. VitalsFilter drops junk, duplicates and
+// one-off glitches; rejected readings are neither stored nor broadcast. The stress engine gets
+// the smoothed value; the chart and replay keep the raw accepted value in `hr`.
 function ingestReading(s, msg) {
   if (!s || s.ended) return;
-  const ts = Number(msg.ts) || Date.now();
-  const hr = Number(msg.hr);
-  if (!Number.isFinite(hr) || hr <= 0) return;
-  const snap = s.engine.add(ts, hr);
-  const v = { ts, hr, br: msg.br != null ? Number(msg.br) : null, state: snap.state };
+  s.filter ??= new VitalsFilter();
+  const r = s.filter.push(msg);
+  if (!r.ok) {
+    if (process.env.FILTER_DEBUG === '1') console.log(`[vitals] dropped hr=${msg.hr} (${r.reason})`);
+    return;
+  }
+  const snap = s.engine.add(r.ts, r.hrSmooth);
+  const v = { ts: r.ts, hr: r.hr, hrSmooth: r.hrSmooth, br: r.br, confidence: r.confidence, state: snap.state };
   s.vitals.push(v);
   db.addVitals(s.id, v);
   broadcast(s.id, { type: 'vitals', ...v, ...snap });
+
+  // Pulse back after being lost: clear our hint (but not a newer one from Presage).
+  if (s.pulseLost) {
+    s.pulseLost = false;
+    if (sensorStatus === PULSE_LOST_HINT) setSensorStatus(s, 'ok');
+  }
+  // Watch for the pulse going quiet. The timer only runs while readings flow: it stops once it
+  // has reported the loss (the next accepted reading restarts it) or when the session ends.
+  if (!s.staleTimer) {
+    s.staleTimer = setInterval(() => {
+      const gone = s.ended || activeSessionId !== s.id; // ended or replaced by a newer session
+      if (!gone && !s.filter.isStale(Date.now())) return;
+      clearInterval(s.staleTimer);
+      s.staleTimer = null;
+      if (gone) return;
+      s.pulseLost = true;
+      setSensorStatus(s, PULSE_LOST_HINT);
+    }, 1000);
+    s.staleTimer.unref?.();
+  }
 }
 
 // Browser webcam frames -> server-side Presage. Binary messages: [float64 LE capture ms][JPEG].
@@ -382,7 +417,7 @@ function onCameraSocket(ws, sessionId) {
   if (!s.presage) {
     try {
       s.presage = createPresageSession({
-        onReading: (r) => ingestReading(s, { hr: r.hr, br: r.br, ts: Date.now() }),
+        onReading: (r) => ingestReading(s, r), // { hr, br, hrv, confidence, stable, ts } from presageSamples.js
         onStatus: (text) => setSensorStatus(s, text || 'ok'),
       });
       console.log(`[presage] measuring session ${s.id.slice(0, 8)} from browser camera`);

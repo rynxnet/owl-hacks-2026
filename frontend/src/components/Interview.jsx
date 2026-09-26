@@ -257,6 +257,12 @@ export default function Interview({ session, onDone }) {
               {snap.baseline ? `Baseline ${Math.round(snap.baseline)} bpm` : 'Measuring baseline'}
               <br />
               {progress.max ? `Question ${progress.q} of ${progress.max}` : ''}
+              {session.role && (
+                <>
+                  <br />
+                  <span className="role-tag">{session.role}</span>
+                </>
+              )}
             </div>
           </div>
           {sensor && <p className="sensor-hint">📷 {sensor}</p>}

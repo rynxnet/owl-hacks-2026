@@ -1,33 +1,68 @@
 # Presage bridge
 
-Presage's SmartSpectra SDK is C++, iOS or Android only, so heart rate reaches the app through a small bridge.
-The backend doesn't care where readings come from, as long as they arrive on one WebSocket.
+Heart rate comes from Presage's SmartSpectra SDK. The backend doesn't care where readings come from, as long as
+they arrive on one WebSocket (or, for server-side Presage, from `backend/src/presageWorker.js`).
 
 ## The contract
 
-Connect to `ws://<backend>:3001/ws/vitals` and send one JSON message per reading (about once a second):
+Connect to `ws://<backend>:3001/ws/vitals` and send one JSON message per reading:
 
 ```json
-{ "hr": 82.4, "br": 14.1, "ts": 1790000000000 }
+{ "hr": 82.4, "br": 14.1, "hrv": 41.3, "confidence": 0.82, "stable": true, "ts": 1790000000000 }
 ```
 
-- `hr`: heart rate in bpm (required)
-- `br`: breathing rate per minute (optional)
-- `ts`: time in milliseconds (optional; the server uses "now" if missing)
+- `hr`: heart rate in bpm, 1 decimal (required)
+- `br`: breathing rate per minute, or `null`
+- `hrv`: HRV RMSSD (ms), or `null`
+- `confidence`: Presage's confidence for this pulse sample, 0..1 (the SDK reports 0..100; we divide by 100), or `null`
+- `stable`: Presage's own "settled" flag for this sample, or `null`
+- `ts`: time the sample was measured, epoch milliseconds (optional for other sources; the server uses "now" if missing)
 - `sessionId` (optional): if left out, readings go to the newest running interview
 
-The simulator (`backend/src/simulator.js`) sends exactly this, so anything that works with the simulator works with Presage.
+The simulator (`backend/src/simulator.js`) sends `{ hr, br, ts }`, so anything that works with the simulator works with Presage.
+
+## SDK contract (verified against `@smartspectra/node-sdk` 3.3.0)
+
+Pinned to exactly `3.3.0` in `backend/package.json` and `presage-bridge/package.json`. Checked against the
+package files (`js/index.d.ts`, `js/index.js`, `js/smartspectra.js`, `js/ffi.js`, `js/constants.js`,
+`js/messages/index.js`, `js/messages/generated.d.ts`, `js/renderer/timestamp.js`) and the docs at
+https://smartspectra.presagetech.com/docs/nodejs/api-reference/ and https://smartspectra.presagetech.com/docs/data-types/.
+
+- `new SmartSpectraSDK({ apiKey, requestedMetrics, enableAccumulatedOutput, logLevel, enableTelemetry })`.
+  `requestedMetrics` defaults to `breathingMetrics`, so pulse needs `[...breathingMetrics, ...cardioMetrics]`.
+- Input: `sdk.useCustomInput(FrameTransform.kNone)` (or `useCamera({ deviceIndex, width, height, fps })`), then
+  `sdk.start()`, then `sdk.sendFrame(buffer, width, height, strideBytes, pixelFormat, timestampUs)` → `boolean` (accepted).
+  `timestampUs` is microseconds, must be strictly increasing (error 10 `kNonMonotonicTimestamp`; error 11 `kTimestampGap`
+  for large gaps). The SDK's own camera/Electron sources stamp frames in epoch µs, and so do we.
+  Pixel formats: `kRGB 0, kBGR 1, kRGBA 2, kBGRA 3, kNV12 4, kNV21 5, kYUYV 6`.
+- `start()` is **synchronous** (`void`) and throws an `Error` with `.code` / `.retryable` (e.g. 2 = key rejected).
+  `stop()` is sync; `stopAsync()` and `destroy()` return Promises.
+- Events (`sdk.on(name, cb)`; one listener per event, a second `on()` replaces it; listener exceptions are caught and logged):
+  `processingStatus(status)`, `validationStatus(code, timestampUs, hint)`, `metrics(buf, timestampUs)`,
+  `accumulatedMetrics(buf, timestampUs)`, `error(code, message, retryable)`, `frameSentThrough(sent, timestampUs)`,
+  `videoOutput(...)`, `insight(buf, requestId)`.
+- `decodeMetrics(buf)` decodes with the bundled protobufjs `Metrics` class (registered by default):
+  `cardio.pulseRate[]`, `breathing.rate[]` are `MeasurementWithConfidence { value, stable, confidence, timestamp }`,
+  `cardio.hrv[]` is `Hrv { rmssd, meanNn, sdnn, baevsky, timestamp, confidence, stable }`.
+  `timestamp` is int64 **microseconds since epoch** and arrives as a protobufjs `Long`; `confidence` is a
+  **percentage 0..100**; `stable` means confidence ≥ 40 for pulse (≥ 45 for breathing).
+  The fields are repeated (a series), so we never take only `.at(-1)`: `backend/src/presageSamples.js`
+  emits every sample newer than the last one sent, once, in time order.
+- Error codes: 1 invalid state, 2 auth failed, 3 config failed, 4 credits exhausted, 5 network, 6 server,
+  7 input unavailable, 8 processing failed, 9 frame conversion failed, 10 non-monotonic timestamp, 11 timestamp gap.
 
 ## Easiest: let the backend run Presage (no bridge needed)
 
 Put `PRESAGE_API_KEY=...` in **`backend/.env`**, run `npm install` and `npm run check:presage` in `backend/`, and restart it.
+`npm run check:presage -- --live` also starts a real SDK session and feeds it 5 s of test frames.
 The browser then streams its webcam to the backend (`/ws/camera`) and Presage runs there, whether that's a
 Codespace, Vultr, or your laptop. Use the bridge below only if that doesn't work (for example, a slow network).
 
 ## Alternative: laptop bridge (`presage.js`)
 
 Presage ships a Node.js SDK (`@smartspectra/node-sdk`) with prebuilt native code for Windows x64,
-macOS Apple Silicon and Linux x64. No C++ build. Needs Node 20+.
+macOS Apple Silicon and Linux x64/arm64 (glibc 2.35+). No C++ build. Needs Node 20+. The bridge shares
+`../backend/src/presageSamples.js`, so run it from a full checkout of the repo.
 
 Run it **on the laptop with the webcam** (not in a Codespace: it has no camera).
 
@@ -39,7 +74,7 @@ cp .env.example .env # Windows: copy .env.example .env
 npm start
 ```
 
-You should see `[presage] Running`, then `[presage] hr=78.3 br=14.2` about once a second after it locks on
+You should see `[presage] Running`, then lines like `[presage] hr=78.3 br=14.2 conf=0.82` after it locks on
 (allow 10-20 seconds). Positioning hints such as "No face found" or "Too dark" show up in the app too.
 
 **Backend in a Codespace?** In the Ports tab, set port 3001 to **Public**, then use

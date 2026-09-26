@@ -22,7 +22,7 @@
     "jpeg-js": "^0.4.4"
   },
   "optionalDependencies": {
-    "@smartspectra/node-sdk": "latest"
+    "@smartspectra/node-sdk": "3.3.0"
   },
   "engines": {
     "node": ">=20"

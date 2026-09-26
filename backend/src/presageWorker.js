@@ -1,10 +1,53 @@
 // Runs in its own process (forked by presage.js), one per interview, so a Presage error or native crash
 // can never take down the interview server. Receives JPEG frames, sends back readings and hints.
+//
+// IPC out:  { type: 'reading', hr, br, hrv, confidence, stable, ts }   (ts = epoch ms of the SDK sample)
+//           { type: 'status', text } | { type: 'fatal', text } | { type: 'ack' } (one per frame received)
+// IPC in:   { type: 'frame', frame: Buffer [float64 LE capture ms since epoch][JPEG] } | { type: 'stop' }
+//
+// SDK API used here was verified against @smartspectra/node-sdk 3.3.0 (see presage-bridge/README.md).
 import { config } from './config.js';
+import {
+  extractNewSamples,
+  nextFrameTimestampUs,
+  nameOf,
+  HINTS,
+  ERROR_TEXT,
+  FATAL_ERROR_CODES,
+} from './presageSamples.js';
 
 const send = (msg) => process.connected && process.send(msg);
-process.on('uncaughtException', (err) => send({ type: 'status', text: `Presage error: ${err.message}` }));
+const report = (err) => send({ type: 'status', text: `Presage error: ${err?.message || err}` });
+process.on('uncaughtException', report);
+process.on('unhandledRejection', report); // e.g. a rejected destroy()/stopAsync() promise
 process.on('disconnect', () => process.exit(0));
+
+let session = null; // set once sdk.start() has succeeded
+let stopping = false;
+
+// Listen right away so frames that arrive while the SDK loads are acked (the parent caps frames in flight).
+process.on('message', async (msg) => {
+  if (msg?.type === 'frame') {
+    if (session && msg.frame) session.sendFrame(Buffer.from(msg.frame.buffer, msg.frame.byteOffset, msg.frame.byteLength));
+    send({ type: 'ack' });
+  } else if (msg?.type === 'stop') {
+    await shutdown(0);
+  }
+});
+
+async function shutdown(code) {
+  if (stopping) return;
+  stopping = true;
+  try {
+    await session?.destroy();
+  } catch {}
+  process.exit(code);
+}
+
+function fatal(text) {
+  send({ type: 'fatal', text });
+  shutdown(1);
+}
 
 let sdkMod;
 let jpeg;
@@ -12,32 +55,11 @@ try {
   sdkMod = await import('@smartspectra/node-sdk');
   jpeg = (await import('jpeg-js')).default;
 } catch (err) {
-  send({ type: 'fatal', text: `Presage SDK failed to load: ${err.message}` });
-  process.exit(1);
+  fatal(`Presage SDK failed to load: ${err.message}`);
 }
 
-const HINTS = {
-  NoFaceFound: 'No face found. Look at the camera.',
-  MultipleFacesFound: 'More than one face in view.',
-  FaceNotCentered: 'Center your face in the camera.',
-  FaceSizeOutOfRange: 'Move closer to or farther from the camera.',
-  FaceTooClose: 'Move back a little.',
-  FaceTooFar: 'Move closer to the camera.',
-  FaceTooHigh: 'Move down a little.',
-  FaceTooLow: 'Move up a little.',
-  FaceNotForward: 'Face the camera directly.',
-  TooDark: 'Too dark. Add light in front of you.',
-  TooBright: 'Too bright. Avoid a window behind you.',
-  ExcessiveMotion: 'Hold still.',
-  FrameRateTooLow: 'Video is choppy. Check your connection.',
-  CameraTuning: 'Adjusting camera...',
-};
-const nameOf = (enumObj, code) =>
-  (Object.entries(enumObj || {}).find(([, v]) => v === code)?.[0] || `code ${code}`).replace(/^k/, '');
-
 // One Presage measurement per interview session.
-// onReading({ hr, br, hrv }) and onStatus(text) are called as results arrive.
-function createPresageSession({ onReading, onStatus }) {
+async function createPresageSession({ onReading, onStatus }) {
   const { SmartSpectraSDK, ProcessingStatus, ValidationCode, PixelFormat, FrameTransform, breathingMetrics, cardioMetrics, decodeMetrics } =
     sdkMod;
 
@@ -47,52 +69,52 @@ function createPresageSession({ onReading, onStatus }) {
   });
 
   let lastHint = null;
-  let lastBr = null;
-  let t0 = null;
-  let lastTsUs = -1;
+  let frameClock = null; // { us, captureMs } of the last frame sent
+  let anchor = null; // { sdkUs, epochMs }: first frame's SDK time -> server wall clock
+  let samples = {}; // extractNewSamples state: lastSampleTs, lastBr, lastHrv
   let destroyed = false;
 
+  // The SDK keeps one listener per event (a second on() replaces the first) and catches listener errors.
   sdk.on('processingStatus', (status) => {
-    const name = nameOf(ProcessingStatus, status);
-    console.log(`[presage] ${name}`);
+    console.log(`[presage] ${nameOf(ProcessingStatus, status)}`);
     if (status === ProcessingStatus.kRunning) onStatus('Reading your pulse. Hold still for a few seconds.');
   });
 
-  sdk.on('validationStatus', (code) => {
-    const hint = code === ValidationCode.kOk ? '' : HINTS[nameOf(ValidationCode, code)] || nameOf(ValidationCode, code);
+  sdk.on('validationStatus', (code, _tsUs, sdkHint) => {
+    const name = nameOf(ValidationCode, code);
+    const hint = code === ValidationCode.kOk ? '' : HINTS[name] || sdkHint || name;
     if (hint !== lastHint) {
       lastHint = hint;
       onStatus(hint);
     }
   });
 
-  sdk.on('metrics', (buf) => {
+  sdk.on('metrics', (buf, eventTsUs) => {
     let m;
     try {
-      m = decodeMetrics(buf);
-    } catch {
-      return;
+      m = decodeMetrics(buf); // SDK registers its bundled protobufjs Metrics class by default
+    } catch (err) {
+      return console.error('[presage] could not decode metrics:', err.message);
     }
     if (!m || Buffer.isBuffer(m)) return;
-    const br = m.breathing?.rate?.at(-1)?.value;
-    if (br > 0) lastBr = br;
-    const pulse = m.cardio?.pulseRate?.at(-1);
-    if (!pulse || !(pulse.value > 0)) return;
-    if (pulse.confidence != null && pulse.confidence < config.presageMinConfidence) return;
-    if (pulse.value < 35 || pulse.value > 220) return;
-    onReading({ hr: +pulse.value.toFixed(1), br: lastBr ? +lastBr.toFixed(1) : null, hrv: m.cardio?.hrv?.at(-1)?.rmssd ?? null });
+    const out = extractNewSamples(m, samples, { anchor, minConfidence: config.presageMinConfidence, eventTsUs });
+    samples = out.state;
+    for (const r of out.readings) onReading(r);
   });
 
-  sdk.on('error', (code, message) => {
-    console.error(`[presage] error ${code}: ${message}`);
-    onStatus({ 2: 'Presage API key rejected.', 4: 'Presage credits used up.', 5: 'Presage cannot reach its server.' }[code] || `Presage error: ${message}`);
+  sdk.on('error', (code, message, retryable) => {
+    console.error(`[presage] error ${code}${retryable ? ' (retryable)' : ''}: ${message}`);
+    if (FATAL_ERROR_CODES.has(code)) return fatal(ERROR_TEXT[code]);
+    onStatus(ERROR_TEXT[code] || `Presage error: ${message}`);
   });
 
   sdk.useCustomInput(FrameTransform?.kNone ?? 0);
-  sdk.start(); // may throw (bad key, no credits); caught by the caller
+  // start() is synchronous in 3.3.0 and throws an Error with .code on failure (bad key, no credits...).
+  // Awaiting also covers a future version that returns a Promise.
+  await sdk.start();
 
   return {
-    // frame: Buffer = [8-byte float64 LE capture time in ms][JPEG bytes]
+    // frame: Buffer = [8-byte float64 LE capture time in ms since epoch][JPEG bytes]
     sendFrame(frame) {
       if (destroyed || frame.length < 100) return;
       const captureMs = frame.readDoubleLE(0);
@@ -102,12 +124,13 @@ function createPresageSession({ onReading, onStatus }) {
       } catch {
         return;
       }
-      if (t0 === null) t0 = captureMs;
-      let tsUs = Math.round((captureMs - t0) * 1000);
-      if (tsUs <= lastTsUs) tsUs = lastTsUs + 1; // SDK needs increasing timestamps
-      lastTsUs = tsUs;
+      // Frame times follow the browser's capture clock in epoch µs (what the SDK's own bindings feed it).
+      // Readings are mapped back onto the server's clock, anchored at the first frame, so a skewed
+      // browser clock can't push readings outside the stress engine's time windows.
+      frameClock = nextFrameTimestampUs(frameClock, captureMs);
+      if (!anchor) anchor = { sdkUs: frameClock.us, epochMs: Date.now() };
       try {
-        sdk.sendFrame(img.data, img.width, img.height, img.width * 4, PixelFormat.kRGBA, tsUs);
+        sdk.sendFrame(img.data, img.width, img.height, img.width * 4, PixelFormat.kRGBA, frameClock.us);
       } catch {
         // not running yet / stopping: drop the frame
       }
@@ -115,32 +138,22 @@ function createPresageSession({ onReading, onStatus }) {
     async destroy() {
       if (destroyed) return;
       destroyed = true;
-      try {
-        await sdk.destroy();
-      } catch {}
+      await sdk.destroy(); // Promise in 3.3.0; waits for native teardown
     },
   };
 }
 
 // --- process wiring ---------------------------------------------------------
-let session;
-try {
-  session = createPresageSession({
-    onReading: (r) => send({ type: 'reading', ...r }),
-    onStatus: (text) => send({ type: 'status', text }),
-  });
-} catch (err) {
-  const msg = /auth|key/i.test(err.message) ? 'Presage API key rejected.' : `Presage could not start: ${err.message}`;
-  send({ type: 'fatal', text: msg });
-  process.exit(1);
-}
-
-process.on('message', async (msg) => {
-  if (msg?.type === 'frame') {
-    session.sendFrame(Buffer.from(msg.frame.buffer, msg.frame.byteOffset, msg.frame.byteLength));
-    send({ type: 'ack' });
-  } else if (msg?.type === 'stop') {
-    await session.destroy();
-    process.exit(0);
+if (sdkMod && jpeg) {
+  try {
+    session = await createPresageSession({
+      onReading: (r) => send({ type: 'reading', ...r }),
+      onStatus: (text) => send({ type: 'status', text }),
+    });
+    if (stopping) await session.destroy();
+  } catch (err) {
+    const text =
+      ERROR_TEXT[err?.code] || (/auth|key/i.test(err?.message) ? ERROR_TEXT[2] : `Presage could not start: ${err?.message || err}`);
+    fatal(text);
   }
-});
+}
