@@ -22,9 +22,21 @@ browser mic -> speech-to-text -> POST /api/sessions/:id/turn -> Gemini -> Eleven
 | `frontend/` | React (Vite). Setup screen, live interview, replay |
 | `presage-bridge/` | Relay that pipes Presage output into the backend, plus setup notes |
 
+## Backend boundaries
+
+The backend keeps one process for simple local setup, with capability modules that communicate through
+small injected functions. `server.js` wires HTTP and WebSocket transports; `sessionService.js` owns session
+lifecycle; `interviewService.js` owns turn orchestration; `vitalsService.js` validates and publishes readings;
+`replayService.js` calculates replay data; and `feedbackService.js` owns coaching retries and timeouts.
+Gemini, voice, Presage, and database integrations remain adapters. This keeps the capabilities independently
+testable without requiring a message broker or distributed deployment. The REST and WebSocket contracts remain
+the boundary for a future split into separate processes.
+
+Run the isolated backend service tests from `backend/` with `npm run test:unit`.
+
 ## Run it locally (about 2 minutes, no API keys needed)
 
-Needs Node 18 or newer and Chrome (for speech recognition).
+Needs Node 20 or newer and Chrome (for speech recognition).
 
 ```bash
 # terminal 1: backend
