@@ -11,6 +11,7 @@ import { StressEngine } from './stress.js';
 import { nextTurn, feedback, PERSONAS } from './interviewer.js';
 import { speak } from './voice.js';
 import { db, dbEnabled } from './db.js';
+import { presageAvailable, presageLoadError, createPresageSession } from './presage.js';
 
 const app = express();
 app.use(cors());
@@ -47,6 +48,8 @@ app.get('/api/health', (_req, res) => {
     database: dbEnabled,
     vitalsSources: vitalsSockets.size,
     sensorStatus,
+    presageServer: presageAvailable(),
+    presageError: config.presageKey && !presageAvailable() ? presageLoadError() : undefined,
     personas: Object.keys(PERSONAS),
   });
 });
@@ -101,6 +104,8 @@ app.post('/api/sessions/:id/end', async (req, res) => {
   if (!s.ended) {
     s.ended = true;
     if (activeSessionId === s.id) activeSessionId = null;
+    s.presage?.destroy();
+    s.presage = null;
     db.endSession(s.id, s.engine.baseline);
     s.feedback = await feedback({ role: s.role, history: s.utterances, spikes: findSpikes(s) });
   }
@@ -162,9 +167,10 @@ const clientSockets = new Map(); // ws -> sessionId
 
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname !== '/ws/vitals' && url.pathname !== '/ws/client') return socket.destroy();
+  if (!['/ws/vitals', '/ws/client', '/ws/camera'].includes(url.pathname)) return socket.destroy();
   wss.handleUpgrade(req, socket, head, (ws) => {
     if (url.pathname === '/ws/vitals') onVitalsSocket(ws);
+    else if (url.pathname === '/ws/camera') onCameraSocket(ws, url.searchParams.get('session'));
     else onClientSocket(ws, url.searchParams.get('session'));
   });
 });
@@ -180,28 +186,59 @@ function onVitalsSocket(ws) {
       return;
     }
     const s = sessions.get(msg.sessionId || activeSessionId);
-
     // Sensor hints from Presage ("No face found", "Too dark"...): show them, don't store them.
-    if (typeof msg.status === 'string') {
-      sensorStatus = msg.status === 'ok' ? '' : msg.status;
-      if (s && !s.ended) broadcast(s.id, { type: 'sensor', status: sensorStatus });
-      if (msg.hr == null) return;
-    }
-
-    if (!s || s.ended) return;
-    const ts = Number(msg.ts) || Date.now();
-    const hr = Number(msg.hr);
-    if (!Number.isFinite(hr) || hr <= 0) return;
-    const snap = s.engine.add(ts, hr);
-    const v = { ts, hr, br: msg.br != null ? Number(msg.br) : null, state: snap.state };
-    s.vitals.push(v);
-    db.addVitals(s.id, v);
-    broadcast(s.id, { type: 'vitals', ...v, ...snap });
+    if (typeof msg.status === 'string') setSensorStatus(s, msg.status);
+    if (msg.hr != null) ingestReading(s, msg);
   });
   ws.on('close', () => {
     vitalsSockets.delete(ws);
     console.log(`[vitals] source disconnected (${vitalsSockets.size} total)`);
   });
+}
+
+function setSensorStatus(s, status) {
+  sensorStatus = status === 'ok' ? '' : status;
+  if (s && !s.ended) broadcast(s.id, { type: 'sensor', status: sensorStatus });
+}
+
+// One heart-rate reading from any source (simulator, laptop bridge, or server-side Presage).
+function ingestReading(s, msg) {
+  if (!s || s.ended) return;
+  const ts = Number(msg.ts) || Date.now();
+  const hr = Number(msg.hr);
+  if (!Number.isFinite(hr) || hr <= 0) return;
+  const snap = s.engine.add(ts, hr);
+  const v = { ts, hr, br: msg.br != null ? Number(msg.br) : null, state: snap.state };
+  s.vitals.push(v);
+  db.addVitals(s.id, v);
+  broadcast(s.id, { type: 'vitals', ...v, ...snap });
+}
+
+// Browser webcam frames -> server-side Presage. Binary messages: [float64 LE capture ms][JPEG].
+function onCameraSocket(ws, sessionId) {
+  const s = sessions.get(sessionId);
+  if (!s || s.ended || !presageAvailable()) return ws.close(1008, 'no session or Presage off');
+  if (!s.presage) {
+    s.presage = createPresageSession({
+      onReading: (r) => ingestReading(s, { ...r, ts: Date.now() }),
+      onStatus: (text) => setSensorStatus(s, text || 'ok'),
+    });
+    console.log(`[presage] measuring session ${s.id.slice(0, 8)} from browser camera`);
+  }
+  ws.on('message', (data, isBinary) => {
+    if (isBinary && s.presage) s.presage.sendFrame(Buffer.isBuffer(data) ? data : Buffer.from(data));
+  });
+  ws.on('close', () => {
+    // Keep the SDK alive briefly in case the page reconnects; end-of-interview destroys it.
+    setTimeout(() => {
+      const stillStreaming = [...wss.clients].some((c) => c.cameraSession === s.id && c.readyState === c.OPEN);
+      if (!stillStreaming && s.presage) {
+        s.presage.destroy();
+        s.presage = null;
+      }
+    }, 15000);
+  });
+  ws.cameraSession = s.id;
 }
 
 function onClientSocket(ws, sessionId) {

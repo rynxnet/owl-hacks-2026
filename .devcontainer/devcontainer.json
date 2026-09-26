@@ -1,0 +1,11 @@
+{
+  "name": "Pressure Test",
+  // Debian 12 (glibc 2.36): Presage's Linux runtime needs glibc 2.35+.
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "forwardPorts": [3001, 5173],
+  "portsAttributes": {
+    "3001": { "label": "backend" },
+    "5173": { "label": "app", "onAutoForward": "openBrowser" }
+  },
+  "postCreateCommand": "cd backend && npm install && cd ../frontend && npm install"
+}

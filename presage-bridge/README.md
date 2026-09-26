@@ -18,7 +18,13 @@ Connect to `ws://<backend>:3001/ws/vitals` and send one JSON message per reading
 
 The simulator (`backend/src/simulator.js`) sends exactly this, so anything that works with the simulator works with Presage.
 
-## Recommended: Node SDK bridge (`presage.js`)
+## Easiest: let the backend run Presage (no bridge needed)
+
+Put `PRESAGE_API_KEY=...` in **`backend/.env`**, run `npm install` and `npm run check:presage` in `backend/`, and restart it.
+The browser then streams its webcam to the backend (`/ws/camera`) and Presage runs there, whether that's a
+Codespace, Vultr, or your laptop. Use the bridge below only if that doesn't work (for example, a slow network).
+
+## Alternative: laptop bridge (`presage.js`)
 
 Presage ships a Node.js SDK (`@smartspectra/node-sdk`) with prebuilt native code for Windows x64,
 macOS Apple Silicon and Linux x64. No C++ build. Needs Node 20+.

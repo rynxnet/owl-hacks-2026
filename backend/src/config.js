@@ -17,6 +17,10 @@ export const config = {
     rapid: process.env.VOICE_RAPID || 'TX3LPaxmHKxFdv7VOQHJ', // Liam: energetic
   },
 
+  // Presage (heart rate from the webcam). With a key, the backend reads frames the browser streams to it.
+  presageKey: process.env.PRESAGE_API_KEY || '',
+  presageMinConfidence: Number(process.env.PRESAGE_MIN_CONFIDENCE || 0),
+
   // Tiger Data (Postgres + time-series). Without a URL everything stays in memory.
   databaseUrl: process.env.DATABASE_URL || '',
 

@@ -62,7 +62,11 @@ export default function Setup({ onStart }) {
 
       <div className="status">
         <Status ok={!!health} label="Backend" />
-        <Status ok={health?.vitalsSources > 0} label="Heart-rate source" />
+        <Status
+          ok={health?.presageServer || health?.vitalsSources > 0}
+          label={health?.presageServer ? 'Presage (webcam)' : 'Heart-rate source'}
+          off={health?.presageError ? 'SDK failed to load' : undefined}
+        />
         <Status ok={health?.gemini} label="Gemini" off="canned questions" />
         <Status ok={health?.elevenlabs} label="ElevenLabs" off="browser voice" />
         <Status ok={health?.database} label="Tiger Data" off="memory only" />

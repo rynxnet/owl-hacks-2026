@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { api, subscribe } from '../lib/api.js';
 import { playLine } from '../lib/audio.js';
 import { createRecognizer } from '../lib/speech.js';
+import { startCameraStream } from '../lib/cameraStream.js';
 import VitalsChart, { STATE_COLORS } from './VitalsChart.jsx';
 
 const BREATHE_SECONDS = 10;
+const HIDDEN_BUT_PLAYING = { position: 'fixed', bottom: 0, right: 0, width: 2, height: 2, opacity: 0.01, overflow: 'hidden', pointerEvents: 'none', padding: 0, margin: 0, border: 0 };
 
 export default function Interview({ session, onDone }) {
   const [vitals, setVitals] = useState([]);
@@ -17,6 +19,8 @@ export default function Interview({ session, onDone }) {
   const [progress, setProgress] = useState({ q: 0, max: 0 });
   const [showCam, setShowCam] = useState(true);
   const [sensor, setSensor] = useState(''); // Presage hint, e.g. "No face found"
+  const [serverPresage, setServerPresage] = useState(false); // backend reads heart rate from our camera
+  const camActive = showCam || serverPresage;
   const started = useRef(false);
   const recognizer = useRef(null);
   const videoRef = useRef(null);
@@ -36,20 +40,37 @@ export default function Interview({ session, onDone }) {
 
   useEffect(() => transcriptEnd.current?.scrollIntoView({ behavior: 'smooth' }), [utterances, partial]);
 
-  // Webcam preview. Some systems only let one program use the camera at a time:
-  // if Presage runs on this same laptop and the preview fails, turn the preview off.
+  // Does the backend run Presage itself? Then we stream our webcam to it.
   useEffect(() => {
-    if (!showCam) return;
+    api.health().then((h) => setServerPresage(Boolean(h.presageServer))).catch(() => {});
+  }, []);
+
+  // Webcam. Server-side Presage: frames go to the backend (preview can be hidden, camera stays on).
+  // Laptop bridge: some systems only let one program use the camera, so if the preview fails, turn it off.
+  useEffect(() => {
+    if (!camActive) return;
     let stream;
+    let stopStreaming;
+    let cancelled = false;
     navigator.mediaDevices
-      ?.getUserMedia({ video: true })
+      ?.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } })
       .then((s) => {
+        if (cancelled) return s.getTracks().forEach((t) => t.stop());
         stream = s;
-        if (videoRef.current) videoRef.current.srcObject = s;
+        const video = videoRef.current;
+        if (video) video.srcObject = s;
+        if (serverPresage && video) stopStreaming = startCameraStream(session.id, video);
       })
-      .catch(() => setShowCam(false));
-    return () => stream?.getTracks().forEach((t) => t.stop());
-  }, [showCam]);
+      .catch(() => {
+        setShowCam(false);
+        if (serverPresage) setSensor('Camera blocked. Allow camera access in the address bar to measure heart rate.');
+      });
+    return () => {
+      cancelled = true;
+      stopStreaming?.();
+      stream?.getTracks().forEach((t) => t.stop());
+    };
+  }, [camActive, serverPresage, session.id]);
 
   // Baseline done -> first question
   useEffect(() => {
@@ -124,11 +145,18 @@ export default function Interview({ session, onDone }) {
           </div>
           {sensor && <p className="sensor-hint">📷 {sensor}</p>}
           <VitalsChart vitals={vitals} baseline={snap.baseline} />
-          {!latest && <p className="muted">Waiting for heart-rate data. Start the Presage bridge or run <code>npm run sim</code> in backend/.</p>}
+          {!latest &&
+            (serverPresage ? (
+              <p className="muted">Presage is finding your pulse. Face the camera and hold still (about 15 seconds).</p>
+            ) : (
+              <p className="muted">Waiting for heart-rate data. Start the Presage bridge or run <code>npm run sim</code> in backend/.</p>
+            ))}
         </div>
 
-        {showCam && (
-          <div className="card cam">
+        {camActive && (
+          // When hidden but still measuring, keep the video "on screen" but invisible:
+          // Chrome may pause videos that are display:none or offscreen.
+          <div className="card cam" style={showCam ? undefined : HIDDEN_BUT_PLAYING}>
             <video ref={videoRef} autoPlay muted playsInline />
           </div>
         )}

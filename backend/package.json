@@ -9,7 +9,8 @@
     "sim": "node src/simulator.js",
     "db:init": "node src/initDb.js",
     "check:gemini": "node src/checkGemini.js",
-    "voices": "node src/voiceCheck.js"
+    "voices": "node src/voiceCheck.js",
+    "check:presage": "node src/checkPresage.js"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",
@@ -17,6 +18,13 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "pg": "^8.13.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "jpeg-js": "^0.4.4"
+  },
+  "optionalDependencies": {
+    "@smartspectra/node-sdk": "latest"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

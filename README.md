@@ -50,6 +50,7 @@ Add keys to `backend/.env` to switch on each sponsor tool:
 | --- | --- |
 | `GEMINI_API_KEY` | Adaptive interviewer and written coaching |
 | `ELEVENLABS_API_KEY` (optional `VOICE_FRIENDLY` / `VOICE_COLD` / `VOICE_RAPID`) | Realistic interviewer voices, one per persona. Test with `npm run voices` |
+| `PRESAGE_API_KEY` | Real heart rate: the browser streams its webcam to the backend and Presage reads your pulse there. Test with `npm run check:presage` |
 | `DATABASE_URL` (Tiger Data) | Saves vitals and transcripts. Run `npm run db:init` once to create tables |
 
 The setup screen shows which of these are on.
