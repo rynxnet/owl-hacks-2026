@@ -18,6 +18,7 @@ export default function Interview({ session, onDone }) {
   const [recording, setRecording] = useState(false);
   const [progress, setProgress] = useState({ q: 0, max: 0 });
   const [showCam, setShowCam] = useState(true);
+  const [turnError, setTurnError] = useState(null); // { answer } when the backend didn't respond
   const [sensor, setSensor] = useState(''); // Presage hint, e.g. "No face found"
   const [serverPresage, setServerPresage] = useState(false); // backend reads heart rate from our camera
   const camActive = showCam || serverPresage;
@@ -72,6 +73,22 @@ export default function Interview({ session, onDone }) {
     };
   }, [camActive, serverPresage, session.id]);
 
+  // No heart rate at all after 45 s (camera blocked, Presage down)? Start anyway instead of waiting forever.
+  const gotVitals = useRef(false);
+  useEffect(() => {
+    if (vitals.length) gotVitals.current = true;
+  }, [vitals.length]);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!started.current && !gotVitals.current) {
+        started.current = true;
+        setSensor('No heart-rate data, so starting without it.');
+        takeTurn('');
+      }
+    }, 45000);
+    return () => clearTimeout(t);
+  }, []);
+
   // Baseline done -> first question
   useEffect(() => {
     if (phase === 'baseline' && snap.baseline && !started.current) {
@@ -82,7 +99,16 @@ export default function Interview({ session, onDone }) {
 
   async function takeTurn(answer) {
     setPhase('thinking');
-    const turn = await api.turn(session.id, answer);
+    setTurnError(null);
+    let turn;
+    try {
+      turn = await api.turn(session.id, answer);
+    } catch (err) {
+      console.error(err);
+      setTurnError({ answer });
+      setPhase('answering');
+      return;
+    }
     setProgress({ q: turn.questionCount, max: turn.maxQuestions });
     setPhase('speaking');
     await playLine(turn.say, turn.audio);
@@ -195,6 +221,13 @@ export default function Interview({ session, onDone }) {
               {partial && <div className="bubble candidate partial">{partial}</div>}
               <div ref={transcriptEnd} />
             </div>
+
+            {turnError && (
+              <p className="sensor-hint">
+                The interviewer didn't respond (is the backend running?){' '}
+                <button className="link" onClick={() => takeTurn(turnError.answer)}>Try again</button>
+              </p>
+            )}
 
             {phase === 'breathing' && (
               <div className="breathe">

@@ -82,7 +82,9 @@ app.post('/api/sessions/:id/turn', async (req, res) => {
   const answer = (req.body?.answer || '').trim();
   if (answer) addUtterance(s, 'candidate', answer);
 
-  const state = s.engine.state === 'baseline' ? 'calm' : s.engine.state;
+  let state = s.engine.state === 'baseline' ? 'calm' : s.engine.state;
+  // Heart rate stays high for a while after a spike: one breathing pause, then keep interviewing.
+  if (state === 'overloaded' && s.lastAction === 'breathe') state = 'elevated';
   const turn = await nextTurn({
     persona: s.persona,
     role: s.role,
@@ -92,6 +94,7 @@ app.post('/api/sessions/:id/turn', async (req, res) => {
     maxQuestions: s.maxQuestions,
   });
   if (turn.action !== 'breathe') s.questionCount += 1;
+  s.lastAction = turn.action;
 
   addUtterance(s, 'interviewer', turn.say);
   const audio = await speak(turn.say, s.persona);
@@ -219,14 +222,23 @@ function onCameraSocket(ws, sessionId) {
   const s = sessions.get(sessionId);
   if (!s || s.ended || !presageAvailable()) return ws.close(1008, 'no session or Presage off');
   if (!s.presage) {
-    s.presage = createPresageSession({
-      onReading: (r) => ingestReading(s, { ...r, ts: Date.now() }),
-      onStatus: (text) => setSensorStatus(s, text || 'ok'),
-    });
-    console.log(`[presage] measuring session ${s.id.slice(0, 8)} from browser camera`);
+    try {
+      s.presage = createPresageSession({
+        onReading: (r) => ingestReading(s, { hr: r.hr, br: r.br, ts: Date.now() }),
+        onStatus: (text) => setSensorStatus(s, text || 'ok'),
+      });
+      console.log(`[presage] measuring session ${s.id.slice(0, 8)} from browser camera`);
+    } catch (err) {
+      console.error('[presage] could not start:', err.message);
+      return ws.close(1011, 'presage failed');
+    }
   }
   ws.on('message', (data, isBinary) => {
-    if (isBinary && s.presage) s.presage.sendFrame(Buffer.isBuffer(data) ? data : Buffer.from(data));
+    try {
+      if (isBinary && s.presage) s.presage.sendFrame(Buffer.isBuffer(data) ? data : Buffer.from(data));
+    } catch (err) {
+      console.error('[presage] frame dropped:', err.message);
+    }
   });
   ws.on('close', () => {
     // Keep the SDK alive briefly in case the page reconnects; end-of-interview destroys it.
@@ -252,6 +264,10 @@ function broadcast(sessionId, payload) {
     if (sid === sessionId && ws.readyState === ws.OPEN) ws.send(data);
   }
 }
+
+// Last-resort safety net: log and keep serving so one bad request or socket never ends a live demo.
+process.on('uncaughtException', (err) => console.error('[server] uncaught error:', err));
+process.on('unhandledRejection', (err) => console.error('[server] unhandled rejection:', err));
 
 server.listen(config.port, () => {
   console.log(`Pressure Test backend on http://localhost:${config.port}`);
