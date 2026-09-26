@@ -49,7 +49,7 @@ Add keys to `backend/.env` to switch on each sponsor tool:
 | Key | Turns on |
 | --- | --- |
 | `GEMINI_API_KEY` | Adaptive interviewer and written coaching |
-| `ELEVENLABS_API_KEY` + `VOICE_FRIENDLY` / `VOICE_COLD` / `VOICE_RAPID` | Realistic interviewer voices, one per persona |
+| `ELEVENLABS_API_KEY` (optional `VOICE_FRIENDLY` / `VOICE_COLD` / `VOICE_RAPID`) | Realistic interviewer voices, one per persona. Test with `npm run voices` |
 | `DATABASE_URL` (Tiger Data) | Saves vitals and transcripts. Run `npm run db:init` once to create tables |
 
 The setup screen shows which of these are on.

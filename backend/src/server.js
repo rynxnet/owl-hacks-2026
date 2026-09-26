@@ -43,7 +43,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     gemini: Boolean(config.geminiKey),
-    elevenlabs: Boolean(config.elevenKey && config.voices.friendly),
+    elevenlabs: Boolean(config.elevenKey),
     database: dbEnabled,
     vitalsSources: vitalsSockets.size,
     personas: Object.keys(PERSONAS),

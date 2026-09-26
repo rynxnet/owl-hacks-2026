@@ -10,10 +10,11 @@ export const config = {
   // ElevenLabs (interviewer voice). Without a key the browser's built-in voice is used.
   elevenKey: process.env.ELEVENLABS_API_KEY || '',
   elevenModel: process.env.ELEVENLABS_MODEL || 'eleven_flash_v2_5',
+  // Defaults are ElevenLabs premade voices (usable on the free plan). Override with IDs from `npm run voices`.
   voices: {
-    friendly: process.env.VOICE_FRIENDLY || '',
-    cold: process.env.VOICE_COLD || '',
-    rapid: process.env.VOICE_RAPID || '',
+    friendly: process.env.VOICE_FRIENDLY || 'cgSgspJ2msm6clMCkdW5', // Jessica: warm, conversational
+    cold: process.env.VOICE_COLD || 'onwK4e9ZLuTAKqWW03F9', // Daniel: steady, authoritative
+    rapid: process.env.VOICE_RAPID || 'TX3LPaxmHKxFdv7VOQHJ', // Liam: energetic
   },
 
   // Tiger Data (Postgres + time-series). Without a URL everything stays in memory.
