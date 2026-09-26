@@ -1,12 +1,18 @@
 {
   "name": "pressure-test-presage-bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "node presage.js",
     "relay": "node relay.js"
   },
   "dependencies": {
+    "@smartspectra/node-sdk": "latest",
+    "dotenv": "^16.4.5",
     "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

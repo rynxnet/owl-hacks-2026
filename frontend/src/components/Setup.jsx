@@ -68,6 +68,8 @@ export default function Setup({ onStart }) {
         <Status ok={health?.database} label="Tiger Data" off="memory only" />
       </div>
 
+      {health?.sensorStatus && <p className="sensor-hint">📷 {health.sensorStatus}</p>}
+
       {error && <p className="error">{error}</p>}
       <button className="primary" onClick={start} disabled={!health}>
         Start interview

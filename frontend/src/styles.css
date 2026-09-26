@@ -70,3 +70,13 @@ label, .label { display: block; margin: 16px 0 6px; font-weight: 600; }
 .spike p { margin: 4px 0 0; color: var(--muted); }
 .quote { border-left: 3px solid var(--accent); padding-left: 10px; }
 .tag { font-size: 11px; color: white; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; }
+
+.sensor-hint {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(217, 154, 30, 0.14);
+  border: 1px solid rgba(217, 154, 30, 0.4);
+  color: #f0c46a;
+  font-size: 14px;
+}

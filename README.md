@@ -33,7 +33,7 @@ cp .env.example .env      # add keys later; everything works without them
 npm install
 npm run dev
 
-# terminal 2: fake heart rate (until Presage works)
+# terminal 2: fake heart rate (or real: see presage-bridge/README.md)
 cd backend
 npm run sim               # press u / d / s to push heart rate up, down, or spike
 

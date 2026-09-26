@@ -46,6 +46,7 @@ app.get('/api/health', (_req, res) => {
     elevenlabs: Boolean(config.elevenKey),
     database: dbEnabled,
     vitalsSources: vitalsSockets.size,
+    sensorStatus,
     personas: Object.keys(PERSONAS),
   });
 });
@@ -156,6 +157,7 @@ if (fs.existsSync(dist)) {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 const vitalsSockets = new Set();
+let sensorStatus = ''; // latest Presage hint, '' when the face is locked on
 const clientSockets = new Map(); // ws -> sessionId
 
 server.on('upgrade', (req, socket, head) => {
@@ -178,9 +180,18 @@ function onVitalsSocket(ws) {
       return;
     }
     const s = sessions.get(msg.sessionId || activeSessionId);
+
+    // Sensor hints from Presage ("No face found", "Too dark"...): show them, don't store them.
+    if (typeof msg.status === 'string') {
+      sensorStatus = msg.status === 'ok' ? '' : msg.status;
+      if (s && !s.ended) broadcast(s.id, { type: 'sensor', status: sensorStatus });
+      if (msg.hr == null) return;
+    }
+
     if (!s || s.ended) return;
     const ts = Number(msg.ts) || Date.now();
     const hr = Number(msg.hr);
+    if (!Number.isFinite(hr) || hr <= 0) return;
     const snap = s.engine.add(ts, hr);
     const v = { ts, hr, br: msg.br != null ? Number(msg.br) : null, state: snap.state };
     s.vitals.push(v);

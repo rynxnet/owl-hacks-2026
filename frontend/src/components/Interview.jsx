@@ -16,6 +16,7 @@ export default function Interview({ session, onDone }) {
   const [recording, setRecording] = useState(false);
   const [progress, setProgress] = useState({ q: 0, max: 0 });
   const [showCam, setShowCam] = useState(true);
+  const [sensor, setSensor] = useState(''); // Presage hint, e.g. "No face found"
   const started = useRef(false);
   const recognizer = useRef(null);
   const videoRef = useRef(null);
@@ -29,6 +30,7 @@ export default function Interview({ session, onDone }) {
         setSnap({ state: msg.state, baseline: msg.baseline, baselineProgress: msg.baselineProgress });
       }
       if (msg.type === 'utterance') setUtterances((u) => [...u, msg]);
+      if (msg.type === 'sensor') setSensor(msg.status);
     });
   }, [session.id]);
 
@@ -120,6 +122,7 @@ export default function Interview({ session, onDone }) {
               {progress.max ? `Question ${progress.q} of ${progress.max}` : ''}
             </div>
           </div>
+          {sensor && <p className="sensor-hint">📷 {sensor}</p>}
           <VitalsChart vitals={vitals} baseline={snap.baseline} />
           {!latest && <p className="muted">Waiting for heart-rate data. Start the Presage bridge or run <code>npm run sim</code> in backend/.</p>}
         </div>
