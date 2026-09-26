@@ -181,3 +181,9 @@ input[type='range'] { accent-color: var(--accent); }
   color: #77511b;
   font-size: 14px;
 }
+
+.error-screen { max-width: 720px; margin: 40px auto; }
+.error-screen h2 { margin-top: 0; }
+.error-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; font-size: 12px; padding: 10px 12px; border-radius: 6px; border: 1px solid #e3b7b3; background: #fbefee; color: #8a2f29; }
+.error-screen details { margin: 10px 0 16px; }
+.error-screen summary { cursor: pointer; color: var(--muted); }

@@ -7,5 +7,7 @@
     "3001": { "label": "backend" },
     "5173": { "label": "app", "onAutoForward": "openBrowser" }
   },
-  "postCreateCommand": "cd backend && npm install && cd ../frontend && npm install"
+  "postCreateCommand": "cd backend && npm install && cd ../frontend && npm install",
+  // Presage needs a machine ID to download its model; containers don't have one (see the script).
+  "postStartCommand": "bash .devcontainer/machine-id.sh"
 }
