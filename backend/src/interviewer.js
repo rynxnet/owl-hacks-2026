@@ -131,7 +131,9 @@ Give coaching as JSON: {"summary": "3-4 sentences: what went well, what rattled 
   } catch (err) {
     console.error('[gemini] feedback failed:', err.message);
   }
+  // error: true tells server.js this is a failure (shows "Try again"), not real coaching.
   return {
+    error: true,
     summary: 'Written feedback is unavailable right now (the AI coach did not respond in time). Your heart-rate replay is still shown.',
     strongerAnswer: null,
   };

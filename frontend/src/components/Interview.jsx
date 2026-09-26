@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, subscribe, newTurnId, mergeUtterances, addPendingAnswer } from '../lib/api.js';
+import { api, subscribe, newTurnId, mergeUtterances, addPendingAnswer, endInterview } from '../lib/api.js';
 import { playLine } from '../lib/audio.js';
 import { createRecognizer } from '../lib/speech.js';
 import { startCameraStream } from '../lib/cameraStream.js';
@@ -21,6 +21,8 @@ export default function Interview({ session, onDone }) {
   const [turnError, setTurnError] = useState(null); // { answer, turnId } when the backend didn't respond
   const [sensor, setSensor] = useState(''); // Presage hint, e.g. "No face found"
   const [serverPresage, setServerPresage] = useState(false); // backend reads heart rate from our camera
+  const [endError, setEndError] = useState(null); // { message, notFound } when /end failed
+  const ending = useRef(false); // finish() runs once even if End is clicked while the interviewer also ends
   const camActive = showCam || serverPresage;
   const started = useRef(false);
   const recognizer = useRef(null);
@@ -174,10 +176,69 @@ export default function Interview({ session, onDone }) {
     takeTurn(text);
   }
 
-  async function finish() {
+  // Called by the End button ({ clicked: true }) and by the interviewer's closing line (no args).
+  const pendingAnswer = useRef('');
+  async function finish(opts) {
+    if (ending.current) return;
+    ending.current = true;
+    setEndError(null);
+    // End clicked mid-answer: send what was spoken or typed so far instead of dropping it.
+    // (Only from the button: takeTurn's closure holds stale `typed`/`phase` values.)
+    if (opts?.clicked && phase === 'answering') {
+      let answer = typed.trim();
+      if (recording && recognizer.current) {
+        setRecording(false);
+        const spoken = await Promise.race([recognizer.current.stop(), new Promise((r) => setTimeout(() => r(''), 1500))]);
+        answer = [spoken, answer].filter(Boolean).join(' ');
+        setPartial('');
+      }
+      setTyped('');
+      pendingAnswer.current = answer;
+    }
+    const answer = pendingAnswer.current;
     setPhase('ending');
-    const replay = await api.end(session.id);
-    onDone(replay);
+
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const replay = await endInterview(session.id, { answer });
+        pendingAnswer.current = '';
+        return onDone(replay);
+      } catch (err) {
+        lastErr = err;
+        console.error('[end]', err);
+        if (err.status === 404) break; // backend restarted: retrying won't help
+        if (err.status === 0 && /too long/.test(err.message)) break; // already waited 40 s
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+    ending.current = false;
+    setEndError({
+      notFound: lastErr?.status === 404,
+      message:
+        lastErr?.status === 404
+          ? 'The server restarted and lost this interview, so it cannot build the full replay or coaching.'
+          : `Could not reach the server to build your replay (${lastErr?.message || 'unknown error'}).`,
+    });
+  }
+
+  // Fallback when the server can't produce a replay: show what this page recorded itself.
+  function showLocalReplay() {
+    const firstTs = [vitals[0]?.ts, utterances[0]?.ts].filter(Boolean);
+    onDone({
+      id: session.id,
+      role: session.role,
+      startedAt: firstTs.length ? Math.min(...firstTs) : Date.now(),
+      baseline: snap.baseline,
+      vitals,
+      utterances: pendingAnswer.current
+        ? [...utterances, { ts: Date.now(), speaker: 'candidate', text: pendingAnswer.current, state: snap.state }]
+        : utterances,
+      spikes: [],
+      feedback: null,
+      feedbackError: endError?.notFound ? 'lost' : 'offline',
+      local: true,
+    });
   }
 
   const latest = vitals.at(-1);
@@ -260,6 +321,14 @@ export default function Interview({ session, onDone }) {
               </p>
             )}
 
+            {endError && (
+              <div className="sensor-hint">
+                <p>{endError.message}</p>
+                <button className="link" onClick={() => finish()}>Try again</button>{' '}
+                <button className="link" onClick={showLocalReplay}>Show what this page recorded</button>
+              </div>
+            )}
+
             {phase === 'breathing' && (
               <div className="breathe">
                 <div className="circle" />
@@ -283,8 +352,8 @@ export default function Interview({ session, onDone }) {
                   disabled={phase !== 'answering'}
                 />
               </form>
-              <span className="muted phase">{phaseLabel(phase)}</span>
-              <button className="link" onClick={finish} disabled={phase === 'ending'}>
+              <span className="muted phase">{endError ? '' : phaseLabel(phase)}</span>
+              <button className="link" onClick={() => finish({ clicked: true })} disabled={phase === 'ending'}>
                 End interview
               </button>
             </div>
