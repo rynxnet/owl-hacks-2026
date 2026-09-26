@@ -5,7 +5,7 @@ export const config = {
 
   // Gemini (interviewer brain). Without a key the server uses canned questions.
   geminiKey: process.env.GEMINI_API_KEY || '',
-  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
 
   // ElevenLabs (interviewer voice). Without a key the browser's built-in voice is used.
   elevenKey: process.env.ELEVENLABS_API_KEY || '',
