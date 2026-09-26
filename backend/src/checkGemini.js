@@ -35,7 +35,11 @@ try {
   const res = await ai.models.generateContent({
     model: config.geminiModel,
     contents: 'Reply ONLY with JSON: {"say": "one short interview question", "action": "ask"}',
-    config: { responseMimeType: 'application/json' },
+    // Same thinking level the interviewer uses, so a model that rejects it shows up here.
+    config: {
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingLevel: (process.env.GEMINI_THINKING_LEVEL || 'LOW').toUpperCase() },
+    },
   });
   console.log('✓ Test call worked:', res.text);
   console.log('\nGemini is fine. Restart the backend (Ctrl+C, npm run dev) so it picks up the .env.');

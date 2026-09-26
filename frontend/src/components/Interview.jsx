@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, subscribe } from '../lib/api.js';
+import { api, subscribe, newTurnId, mergeUtterances, addPendingAnswer } from '../lib/api.js';
 import { playLine } from '../lib/audio.js';
 import { createRecognizer } from '../lib/speech.js';
 import { startCameraStream } from '../lib/cameraStream.js';
@@ -18,7 +18,7 @@ export default function Interview({ session, onDone }) {
   const [recording, setRecording] = useState(false);
   const [progress, setProgress] = useState({ q: 0, max: 0 });
   const [showCam, setShowCam] = useState(true);
-  const [turnError, setTurnError] = useState(null); // { answer } when the backend didn't respond
+  const [turnError, setTurnError] = useState(null); // { answer, turnId } when the backend didn't respond
   const [sensor, setSensor] = useState(''); // Presage hint, e.g. "No face found"
   const [serverPresage, setServerPresage] = useState(false); // backend reads heart rate from our camera
   const camActive = showCam || serverPresage;
@@ -26,15 +26,30 @@ export default function Interview({ session, onDone }) {
   const recognizer = useRef(null);
   const videoRef = useRef(null);
   const transcriptEnd = useRef(null);
+  const turnInFlight = useRef(false); // blocks double submits (Enter spam, mic + typing, retry spam)
+  const mounted = useRef(true);
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  // False once unmounted or ending, so a late turn doesn't speak over the replay.
+  const active = () => mounted.current && phaseRef.current !== 'ending';
 
-  // Live updates from the backend
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // Live updates from the backend. The transcript also comes back in every turn response,
+  // so the chat stays correct even while this socket is down or reconnecting.
   useEffect(() => {
     return subscribe(session.id, (msg) => {
       if (msg.type === 'vitals') {
         setVitals((v) => [...v.slice(-300), msg]);
         setSnap({ state: msg.state, baseline: msg.baseline, baselineProgress: msg.baselineProgress });
       }
-      if (msg.type === 'utterance') setUtterances((u) => [...u, msg]);
+      if (msg.type === 'utterance') setUtterances((u) => mergeUtterances(u, [msg]));
+      if (msg.type === 'transcript') setUtterances((u) => mergeUtterances(u, msg.utterances));
       if (msg.type === 'sensor') setSensor(msg.status);
     });
   }, [session.id]);
@@ -97,21 +112,35 @@ export default function Interview({ session, onDone }) {
     }
   }, [snap.baseline, phase]);
 
-  async function takeTurn(answer) {
+  // turnId is reused by "Try again", so the server never stores the same answer twice.
+  async function takeTurn(rawAnswer, turnId = newTurnId()) {
+    if (turnInFlight.current || !active()) return;
+    turnInFlight.current = true;
+    const answer = String(rawAnswer || '').trim();
     setPhase('thinking');
     setTurnError(null);
+    if (answer) setUtterances((u) => addPendingAnswer(u, answer, turnId));
     let turn;
     try {
-      turn = await api.turn(session.id, answer);
+      turn = await api.turn(session.id, answer, turnId);
     } catch (err) {
       console.error(err);
-      setTurnError({ answer });
+      turnInFlight.current = false;
+      if (!active()) return;
+      if (err.data?.utterances) setUtterances((u) => mergeUtterances(u, err.data.utterances));
+      setTurnError({ answer, turnId, busy: err.status === 409 });
       setPhase('answering');
       return;
     }
+    turnInFlight.current = false;
+    if (!active()) return;
+    setUtterances((u) => mergeUtterances(u, turn.utterances));
     setProgress({ q: turn.questionCount, max: turn.maxQuestions });
-    setPhase('speaking');
-    await playLine(turn.say, turn.audio);
+    if (turn.say) {
+      setPhase('speaking');
+      await playLine(turn.say, turn.audio);
+      if (!active()) return;
+    }
 
     if (turn.action === 'end') return finish();
     if (turn.action === 'breathe') {
@@ -133,13 +162,13 @@ export default function Interview({ session, onDone }) {
       setRecording(false);
       const text = await recognizer.current.stop();
       setPartial('');
-      if (text) takeTurn(text);
+      if (text && !turnInFlight.current) takeTurn(text);
     }
   }
 
   function sendTyped(e) {
     e.preventDefault();
-    if (!typed.trim()) return;
+    if (!typed.trim() || phase !== 'answering' || turnInFlight.current) return;
     const text = typed;
     setTyped('');
     takeTurn(text);
@@ -212,8 +241,8 @@ export default function Interview({ session, onDone }) {
         {phase !== 'baseline' && (
           <>
             <div className="transcript">
-              {utterances.map((u, i) => (
-                <div key={i} className={`bubble ${u.speaker}`}>
+              {utterances.map((u) => (
+                <div key={`${u.ts}|${u.speaker}|${u.text}${u.pending ? '|p' : ''}`} className={`bubble ${u.speaker}${u.pending ? ' partial' : ''}`}>
                   <span className="who">{u.speaker === 'interviewer' ? 'Interviewer' : 'You'}</span>
                   {u.text}
                 </div>
@@ -224,8 +253,10 @@ export default function Interview({ session, onDone }) {
 
             {turnError && (
               <p className="sensor-hint">
-                The interviewer didn't respond (is the backend running?){' '}
-                <button className="link" onClick={() => takeTurn(turnError.answer)}>Try again</button>
+                {turnError.busy
+                  ? 'The interviewer is still answering your last message.'
+                  : "The interviewer didn't respond (is the backend running?)"}{' '}
+                <button className="link" onClick={() => takeTurn(turnError.answer, turnError.turnId)}>Try again</button>
               </p>
             )}
 

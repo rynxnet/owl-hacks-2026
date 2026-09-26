@@ -76,10 +76,45 @@ app.post('/api/sessions', (req, res) => {
 });
 
 // One interview turn: store the candidate's answer (if any), get the interviewer's next line.
+// Body: { answer, turnId }. turnId (client-generated, reused on "Try again") makes the call idempotent:
+// a retry or double submit of the same turn returns the same result instead of storing the answer twice.
+// Only one turn runs per session at a time; a different turn sent meanwhile gets 409.
+// The response includes the full transcript so the chat is correct even if the websocket is down.
 app.post('/api/sessions/:id/turn', async (req, res) => {
   const s = getSession(req, res);
   if (!s) return;
-  const answer = (req.body?.answer || '').trim();
+  const answer = String(req.body?.answer ?? '').trim();
+  const turnId = req.body?.turnId ? String(req.body.turnId) : null;
+
+  if (turnId && s.lastTurn?.turnId === turnId) return res.json(turnResponse(s, s.lastTurn.result));
+  if (s.inFlight) {
+    if (turnId && s.inFlight.turnId === turnId) {
+      try {
+        return res.json(turnResponse(s, await s.inFlight.promise));
+      } catch {
+        return res.status(500).json({ error: 'turn failed' });
+      }
+    }
+    return res.status(409).json({ error: 'a turn is already in progress', utterances: s.utterances });
+  }
+
+  const promise = runTurn(s, answer);
+  s.inFlight = { turnId, promise };
+  try {
+    const result = await promise;
+    if (turnId) s.lastTurn = { turnId, result };
+    res.json(turnResponse(s, result));
+  } catch (err) {
+    console.error('[turn] failed:', err);
+    res.status(500).json({ error: 'turn failed', utterances: s.utterances });
+  } finally {
+    s.inFlight = null;
+  }
+});
+
+async function runTurn(s, answer) {
+  // Interview already over (ended, or the closing line was said): don't store late answers or say more.
+  if (s.ended || s.lastAction === 'end') return { say: '', action: 'end', state: s.engine.state, audio: null };
   if (answer) addUtterance(s, 'candidate', answer);
 
   let state = s.engine.state === 'baseline' ? 'calm' : s.engine.state;
@@ -93,13 +128,18 @@ app.post('/api/sessions/:id/turn', async (req, res) => {
     questionCount: s.questionCount,
     maxQuestions: s.maxQuestions,
   });
-  if (turn.action !== 'breathe') s.questionCount += 1;
+  if (s.ended) return { say: '', action: 'end', state, audio: null }; // "End interview" clicked meanwhile
+  if (turn.action === 'ask' || turn.action === 'escalate') s.questionCount += 1;
   s.lastAction = turn.action;
 
   addUtterance(s, 'interviewer', turn.say);
   const audio = await speak(turn.say, s.persona);
-  res.json({ ...turn, state, audio, questionCount: s.questionCount, maxQuestions: s.maxQuestions });
-});
+  return { say: turn.say, action: turn.action, source: turn.source, state, audio };
+}
+
+function turnResponse(s, result) {
+  return { ...result, questionCount: s.questionCount, maxQuestions: s.maxQuestions, utterances: s.utterances };
+}
 
 app.post('/api/sessions/:id/end', async (req, res) => {
   const s = getSession(req, res);
@@ -255,7 +295,15 @@ function onCameraSocket(ws, sessionId) {
 
 function onClientSocket(ws, sessionId) {
   clientSockets.set(ws, sessionId);
-  ws.on('close', () => clientSockets.delete(ws));
+  // Ping so proxies (Codespaces, Vite, load balancers) don't drop the socket while nothing is being said.
+  const keepAlive = setInterval(() => ws.readyState === ws.OPEN && ws.ping(), 25000);
+  ws.on('close', () => {
+    clearInterval(keepAlive);
+    clientSockets.delete(ws);
+  });
+  // (Re)connecting clients get the transcript so far, so nothing said while the socket was down is lost.
+  const s = sessions.get(sessionId);
+  if (s) ws.send(JSON.stringify({ type: 'transcript', utterances: s.utterances }));
 }
 
 function broadcast(sessionId, payload) {
