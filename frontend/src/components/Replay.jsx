@@ -111,7 +111,7 @@ export default function Replay({ replay: initial, onRestart }) {
       </div>
 
       <div className="grid2">
-        <div className="card">
+        <div className="card replay-insight-card rattled-card">
           <h3>What rattled you</h3>
           {spikes.length === 0 && (
             <p className="muted">
@@ -129,7 +129,7 @@ export default function Replay({ replay: initial, onRestart }) {
             </div>
           ))}
         </div>
-        <div className="card">
+        <div className="card replay-insight-card">
           <h3>Coaching</h3>
           {feedback ? (
             <>
@@ -169,7 +169,7 @@ export default function Replay({ replay: initial, onRestart }) {
         </div>
       </div>
 
-      <button className="primary" onClick={onRestart}>Practice again</button>
+      <button className="primary replay-restart" onClick={onRestart}>Practice again</button>
     </div>
   );
 }

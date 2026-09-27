@@ -29,7 +29,7 @@ export default function Interview({ session, onDone }) {
   const started = useRef(false);
   const recognizer = useRef(null);
   const videoRef = useRef(null);
-  const transcriptEnd = useRef(null);
+  const transcriptRef = useRef(null);
   const turnInFlight = useRef(false); // blocks double submits (Enter spam, mic + typing, retry spam)
   const mounted = useRef(true);
   const phaseRef = useRef(phase);
@@ -58,10 +58,9 @@ export default function Interview({ session, onDone }) {
     });
   }, [session.id]);
 
-  // Braces matter: newer Chrome returns a Promise from scrollIntoView(), and an effect that returns
-  // anything but a cleanup function crashes React ("destroy is not a function" -> white screen).
   useEffect(() => {
-    transcriptEnd.current?.scrollIntoView({ behavior: 'smooth' });
+    const transcript = transcriptRef.current;
+    transcript?.scrollTo({ top: transcript.scrollHeight, behavior: 'smooth' });
   }, [utterances, partial]);
 
   // Does the backend run Presage itself? Then we stream our webcam to it.
@@ -320,7 +319,7 @@ export default function Interview({ session, onDone }) {
 
         {phase !== 'baseline' && (
           <>
-            <div className="transcript">
+            <div className="transcript" ref={transcriptRef}>
               {utterances.map((u) => (
                 <div key={`${u.ts}|${u.speaker}|${u.text}${u.pending ? '|p' : ''}`} className={`bubble ${u.speaker}${u.pending ? ' partial' : ''}`}>
                   <span className="who">{u.speaker === 'interviewer' ? 'Interviewer' : 'You'}</span>
@@ -328,7 +327,6 @@ export default function Interview({ session, onDone }) {
                 </div>
               ))}
               {partial && <div className="bubble candidate partial">{partial}</div>}
-              <div ref={transcriptEnd} />
             </div>
 
             {turnError && (

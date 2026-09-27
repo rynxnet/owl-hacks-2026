@@ -72,7 +72,9 @@ label, .label { display: block; margin: 16px 0 6px; font-weight: 600; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+.card.replay-insight-card { padding: 8px; }
 .spike { border-left: 3px solid #d6453d; padding-left: 10px; margin-bottom: 12px; }
+.rattled-card > .muted, .rattled-card .spike { font-weight: 500; }
 .spike p { margin: 4px 0 0; color: var(--muted); }
 .quote { border-left: 3px solid var(--accent); padding-left: 10px; }
 .tag { font-size: 11px; color: white; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; }
@@ -156,7 +158,8 @@ input[type='range'] { accent-color: var(--accent); }
 .bubble.interviewer { background: #e5e7eb; }
 .bubble.candidate { border-color: #c9e5df; background: #e4f2ef; }
 .replay-transcript-line { padding: 8px 10px; border-radius: 6px; }
-.replay-transcript-line.interviewer { background: #e5e7eb; }
+.replay-transcript-line.interviewer { background: #d1d5db; }
+.replay-restart { display: block; width: fit-content; margin: 16px auto 0; }
 .controls { padding-top: 16px; }
 .mic.on { border-color: #bd4c46; background: #bd4c46; color: #f2f2f2; }
 .mic:not(.on) { border-color: var(--accent); background: var(--accent); color: #f2f2f2; }
