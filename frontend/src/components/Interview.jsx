@@ -118,14 +118,6 @@ export default function Interview({ session, onDone }) {
     return () => clearTimeout(t);
   }, []);
 
-  // Seconds spent waiting for a pulse / baseline, for the on-screen status. Stops once the baseline is set.
-  const [waitSecs, setWaitSecs] = useState(0);
-  useEffect(() => {
-    if (snap.baseline) return undefined;
-    const t = setInterval(() => setWaitSecs((n) => n + 1), 1000);
-    return () => clearInterval(t);
-  }, [snap.baseline]);
-
   // Baseline done -> first question
   useEffect(() => {
     if (phase === 'baseline' && snap.baseline && !started.current) {
@@ -274,9 +266,6 @@ export default function Interview({ session, onDone }) {
   const conf = latest?.confidence;
   const vsBaseline = latest && snap.baseline ? Math.round(((latest.hr - snap.baseline) / snap.baseline) * 100) : null;
   const stateTotal = stats.calm + stats.elevated + stats.overloaded;
-  // searching: no reading yet · calibrating: pulse found, learning the resting rate · ready: baseline set
-  const sensing = !latest ? 'searching' : !snap.baseline ? 'calibrating' : 'ready';
-  const pct = Math.round((snap.baselineProgress || 0) * 100);
 
   return (
     <div className="interview">
@@ -284,12 +273,8 @@ export default function Interview({ session, onDone }) {
         <div className="card">
           <div className="row between">
             <div>
-              <div className="big" style={{ color }}>
-                {latest ? Math.round(latest.hr) : <span className="wait-dots" aria-label="Waiting for heart rate"><i /><i /><i /></span>} <small>bpm</small>
-              </div>
-              <div className="state" style={{ background: color }}>
-                {sensing === 'searching' ? 'finding pulse' : sensing === 'calibrating' ? 'calibrating' : snap.state}
-              </div>
+              <div className="big" style={{ color }}>{latest ? Math.round(latest.hr) : <span className="wait-dots" aria-label="Waiting for heart rate"><i>.</i><i>.</i><i>.</i></span>} <small>bpm</small></div>
+              <div className="state" style={{ background: color }}>{snap.state}</div>
             </div>
             <div className="muted right-text">
               {snap.baseline ? `Baseline ${Math.round(snap.baseline)} bpm` : 'Measuring baseline'}
@@ -305,9 +290,12 @@ export default function Interview({ session, onDone }) {
           </div>
           {sensor && <p className="sensor-hint">📷 {sensor}</p>}
           <VitalsChart vitals={vitals} baseline={snap.baseline} />
-          {sensing !== 'ready' && (
-            <PulseStatus stage={sensing} secs={waitSecs} pct={pct} bridge={!serverPresage} />
-          )}
+          {!latest &&
+            (serverPresage ? (
+              <p className="muted">Presage is finding your pulse. Face the camera and hold still (about 15 seconds).</p>
+            ) : (
+              <p className="muted">Waiting for heart-rate data. Start the Presage bridge or run <code>npm run sim</code> in backend/.</p>
+            ))}
         </div>
 
         <div className="card">
@@ -372,18 +360,9 @@ export default function Interview({ session, onDone }) {
       <div className="right card">
         {phase === 'baseline' && (
           <div className="center">
-            <div className={`heart-beat ${sensing}`} aria-hidden="true">♥</div>
-            <h2>{sensing === 'searching' ? 'Finding your pulse' : sensing === 'calibrating' ? 'Measuring your resting heart rate' : 'Starting the interview'}<span className="anim-ellipsis" aria-hidden="true" /></h2>
-            <p className="hold-still">Face the camera and hold still</p>
-            <ol className="steps">
-              <li className={sensing === 'searching' ? 'active' : 'done'}>Find pulse</li>
-              <li className={sensing === 'calibrating' ? 'active' : sensing === 'ready' ? 'done' : ''}>Resting heart rate{sensing === 'calibrating' ? ` · ${pct}%` : ''}</li>
-              <li className={sensing === 'ready' ? 'active' : ''}>First question</li>
-            </ol>
-            <div className={`bar${sensing === 'searching' ? ' indeterminate' : ''}`} role="progressbar" aria-valuenow={sensing === 'searching' ? undefined : pct} aria-valuemin={0} aria-valuemax={100}>
-              <div style={sensing === 'searching' ? undefined : { width: `${pct}%` }} />
-            </div>
-            <p className="muted small-text">{waitSecs}s · the interview starts on its own when this is done</p>
+            <h2>Get comfortable</h2>
+            <p className="muted">Sit still facing the camera while we learn your resting heart rate.</p>
+            <div className="bar"><div style={{ width: `${Math.round(snap.baselineProgress * 100)}%` }} /></div>
             <button
               className="link"
               onClick={() => {
@@ -456,34 +435,6 @@ export default function Interview({ session, onDone }) {
           </>
         )}
       </div>
-    </div>
-  );
-}
-
-// Big, obvious status while Presage looks for a pulse and learns the resting heart rate.
-function PulseStatus({ stage, secs, pct, bridge }) {
-  const searching = stage === 'searching';
-  return (
-    <div className={`pulse-status ${stage}`} role="status" aria-live="polite">
-      <div className="pulse-status-head">
-        <span className="heart-beat small" aria-hidden="true">♥</span>
-        <strong>
-          {searching ? 'Finding your pulse' : 'Pulse found · measuring resting heart rate'}
-          <span className="anim-ellipsis" aria-hidden="true" />
-          {!searching && <span className="pulse-pct">{pct}%</span>}
-        </strong>
-        <span className="pulse-secs">{secs}s</span>
-      </div>
-      <p className="pulse-tips">Face the camera · Hold still · Keep your face well lit</p>
-      {searching && secs >= 20 && (
-        <p className="pulse-help">
-          {bridge ? (
-            <>Still nothing? Check the <code>presage-bridge</code> terminal shows <code>[presage] Running</code> and no other app is using the camera (or run <code>npm run sim</code> in backend/).</>
-          ) : (
-            <>Still nothing? Make sure your face is centered, in even light, and the camera isn't used by another app.</>
-          )}
-        </p>
-      )}
     </div>
   );
 }
