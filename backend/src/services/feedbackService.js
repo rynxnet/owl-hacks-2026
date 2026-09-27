@@ -11,6 +11,7 @@ export function createFeedbackService({ generateFeedback, findSpikes, timeoutMs 
         const raw = await generateFeedback({
           role: session.role,
           jobDetails: session.jobDetails,
+          persona: session.persona,
           history: session.utterances,
           spikes: findSpikes(session),
         });

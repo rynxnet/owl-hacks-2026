@@ -6,7 +6,7 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { config } from './config.js';
-import { nextTurn, feedback, PERSONAS } from './interviewer.js';
+import { nextTurn, feedback, prepareInterviewer, PERSONAS } from './interviewer.js';
 import { speak } from './voice.js';
 import { db, dbEnabled } from './db.js';
 import { presageAvailable, presageLoadError, createPresageSession } from './presage.js';
@@ -78,6 +78,8 @@ app.get('/api/health', (_req, res) => {
 app.post('/api/sessions', (req, res) => {
   const s = sessionService.create(req.body || {});
   const brief = roleBrief(s.role, s.jobDetails);
+  // Gemini builds the interviewer (company, team, hiring manager, plan) while the baseline is measured.
+  prepareInterviewer({ persona: s.persona, role: s.role, jobDetails: s.jobDetails });
   console.log(`[session] ${s.id.slice(0, 8)} role="${s.role}" track=${brief.track} level=${brief.seniority}${s.jobDetails ? ` jobDetails=${s.jobDetails.length} chars` : ''}`);
   res.json({ id: s.id, persona: s.persona, role: s.role, track: brief.track, baselineMs: config.baselineMs });
 });
@@ -105,13 +107,18 @@ app.post('/api/sessions/:id/turn', async (req, res) => {
     return res.status(409).json({ error: 'a turn is already in progress', utterances: s.utterances });
   }
 
-  const promise = interviewService.runTurn(s, answer);
+  const promise = interviewService.runTurn(s, answer, turnId);
   s.inFlight = { turnId, promise };
   try {
     const result = await promise;
     if (turnId) s.lastTurn = { turnId, result };
     res.json(turnResponse(s, result));
   } catch (err) {
+    if (err?.code === 'AI_INTERVIEWER_FAILED') {
+      // Gemini couldn't produce a real reply. Say so instead of faking one.
+      console.error('[turn] AI interviewer failed:', err.message);
+      return res.status(502).json({ error: err.message, code: err.code, stage: err.stage, utterances: s.utterances });
+    }
     console.error('[turn] failed:', err);
     res.status(500).json({ error: 'turn failed', utterances: s.utterances });
   } finally {
@@ -264,7 +271,7 @@ process.on('unhandledRejection', (err) => console.error('[server] unhandled reje
 server.listen(config.port, () => {
   console.log(`Pressure Test backend on http://localhost:${config.port}`);
   console.log(
-    `  Gemini: ${config.geminiKey ? 'on' : 'off (canned questions)'} | ElevenLabs: ${
+    `  Gemini: ${config.geminiKey ? 'on' : 'OFF: interviewer will not work, set GEMINI_API_KEY'} | ElevenLabs: ${
       config.elevenKey ? 'on' : 'off (browser voice)'
     } | Tiger Data: ${dbEnabled ? 'on' : 'off (memory only)'}`,
   );

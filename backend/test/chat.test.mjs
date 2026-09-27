@@ -1,3 +1,8 @@
+// NOTE (AI interviewer agent): the interviewer no longer has a canned fallback, and each interview now
+// makes a persona "briefing" Gemini call before its first turn. Checks here that expect canned
+// questions (no key, Gemini error/empty/slow) are superseded: those cases now return HTTP 502 with
+// code AI_INTERVIEWER_FAILED. The fake-Gemini harness this file needs was never committed. The
+// current interviewer behavior is covered by test/interviewer-agent.test.mjs (no harness needed).
 // Chat / interview-turn loop tests.  Run from backend/:   node test/chat.test.mjs
 //
 // Needs @google/genai + ws resolvable from backend/node_modules. Offline, symlink the harness:

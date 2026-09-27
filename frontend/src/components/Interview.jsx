@@ -134,7 +134,8 @@ export default function Interview({ session, onDone }) {
       turnInFlight.current = false;
       if (!active()) return;
       if (err.data?.utterances) setUtterances((u) => mergeUtterances(u, err.data.utterances));
-      setTurnError({ answer, turnId, busy: err.status === 409 });
+      const aiMessage = err.data?.code === 'AI_INTERVIEWER_FAILED' ? err.data.error : '';
+      setTurnError({ answer, turnId, busy: err.status === 409, message: aiMessage });
       setPhase('answering');
       return;
     }
@@ -326,7 +327,7 @@ export default function Interview({ session, onDone }) {
               <p className="sensor-hint">
                 {turnError.busy
                   ? 'The interviewer is still answering your last message.'
-                  : "The interviewer didn't respond (is the backend running?)"}{' '}
+                  : turnError.message || "The interviewer didn't respond (is the backend running?)"}{' '}
                 <button className="link" onClick={() => takeTurn(turnError.answer, turnError.turnId)}>Try again</button>
               </p>
             )}

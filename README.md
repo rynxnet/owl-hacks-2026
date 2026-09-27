@@ -60,22 +60,33 @@ Add keys to `backend/.env` to switch on each sponsor tool:
 
 | Key | Turns on |
 | --- | --- |
-| `GEMINI_API_KEY` | Adaptive interviewer and written coaching |
+| `GEMINI_API_KEY` | **Required.** The AI interviewer and written coaching. Test with `npm run check:gemini` |
 | `ELEVENLABS_API_KEY` (optional `VOICE_FRIENDLY` / `VOICE_COLD` / `VOICE_RAPID`) | Realistic interviewer voices, one per persona. Test with `npm run voices` |
 | `PRESAGE_API_KEY` | Real heart rate: the browser streams its webcam to the backend and Presage reads your pulse there. Test with `npm run check:presage` |
 | `DATABASE_URL` (Tiger Data) | Saves vitals and transcripts. Run `npm run db:init` once to create tables |
 
 The setup screen shows which of these are on.
 
-## Role-tailored interviewer
+## AI interviewer (Gemini agent)
 
-Whatever the candidate types in **Role** (plus an optional pasted job posting) decides who the interviewer is and
-what it asks. `backend/src/roles.js` maps the role to a track (security, IT, legal, finance, sales/marketing,
-data, engineering, software, healthcare, education, product/project, design, service, trades, or general) and a
-level (entry / mid / senior). Gemini is told to be the hiring manager for that exact job and to ask only
-job-specific questions. The persona buttons (friendly / cold / rapid) set the interviewing *style* only. With no
-Gemini key, or when Gemini is slow, the canned fallback still asks role-specific questions from the same tracks.
-Test: `node backend/test/role.test.mjs` (uses a fake Gemini; no network).
+Every line the interviewer says is generated live by Gemini. There is no question bank and no canned fallback.
+`backend/src/interviewer.js` runs one agent in three steps:
+
+1. **Brief** (once per interview, started when the session is created): Gemini reads the **Role** and the pasted
+   job posting and builds the interviewer: company, company context, team, a named fictional hiring manager and
+   title, what the hire will do, must-haves, red flags, and a 5-8 step interview plan specific to that posting.
+2. **Respond** (every turn): Gemini plays that interviewer. It names the detail it heard in the candidate's
+   latest answer (`heard`), judges the answer (`answerRead`: strong, partial, vague, off topic, a question back...),
+   reacts to that detail as this person at this company, then asks one question: a follow-up or the next plan
+   area. The live stress state (calm / elevated / overloaded) sets how hard it pushes.
+3. **Review**: each reply is checked for generic filler ("tell me more", "can you elaborate", "that's great",
+   "tell me about yourself"...), for reacting to something the candidate didn't say, and for repeated questions.
+   A failing draft goes back to Gemini once with the reasons.
+
+If Gemini is missing or fails (no key, API error, timeout, or a generic reply twice), the turn fails and the chat
+shows the reason with **Try again**. Retrying doesn't store the answer twice. The persona buttons
+(friendly / cold / rapid) set the interviewing *style* only.
+Tests: `node backend/test/interviewer-agent.test.mjs` and `node backend/test/role.test.mjs` (fake Gemini, no network).
 
 ## Stress logic
 
