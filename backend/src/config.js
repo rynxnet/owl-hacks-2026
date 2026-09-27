@@ -36,9 +36,6 @@ export const config = {
   presageMode: (process.env.PRESAGE_MODE || 'bridge').trim().toLowerCase() === 'server' ? 'server' : 'bridge',
   presageMinConfidence: Number(process.env.PRESAGE_MIN_CONFIDENCE || 0),
 
-  // Tiger Data (Postgres + time-series). Without a URL everything stays in memory.
-  databaseUrl: process.env.DATABASE_URL || '',
-
   // Stress logic tuning
   baselineMs: Number(process.env.BASELINE_MS || 12000),
   windowMs: Number(process.env.WINDOW_MS || 10000),

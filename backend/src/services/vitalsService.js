@@ -3,7 +3,7 @@ import { VitalsFilter, PULSE_LOST_HINT } from '../vitalsFilter.js';
 // msg: { hr, br?, hrv?, confidence?, stable?, ts? } from any source (Presage, bridge, simulator).
 // VitalsFilter drops junk, duplicates and one-off glitches; the stress engine gets a smoothed value.
 // isActive(session) lets the lost-pulse watcher stop once a newer session takes over.
-export function createVitalsService({ db, broadcast, isActive = () => true }) {
+export function createVitalsService({ broadcast, isActive = () => true }) {
   let sensorStatus = '';
 
   function setSensorStatus(session, status) {
@@ -32,7 +32,6 @@ export function createVitalsService({ db, broadcast, isActive = () => true }) {
       state: snapshot.state,
     };
     session.vitals.push(vital);
-    db.addVitals(session.id, vital);
     broadcast(session.id, { type: 'vitals', ...vital, ...snapshot });
     watchForLostPulse(session);
     return vital;

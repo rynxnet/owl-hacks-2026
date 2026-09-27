@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { StressEngine } from '../stress.js';
 import { normalizeRole, normalizeJobDetails } from '../roles.js';
 
-export function createSessionService({ db, personas, destroySensor = () => {} }) {
+export function createSessionService({ personas, destroySensor = () => {} }) {
   const sessions = new Map();
   const validPersonas = new Set(personas);
   let activeSessionId = null;
@@ -26,7 +26,6 @@ export function createSessionService({ db, personas, destroySensor = () => {} })
     };
     sessions.set(session.id, session);
     activeSessionId = session.id;
-    db.createSession(session);
     return session;
   }
 
@@ -37,7 +36,6 @@ export function createSessionService({ db, personas, destroySensor = () => {} })
     if (activeSessionId === session.id) activeSessionId = null;
     destroySensor(session);
     session.presage = null;
-    db.endSession(session.id, baseline);
     return true;
   }
 
