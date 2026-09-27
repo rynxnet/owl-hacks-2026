@@ -286,7 +286,7 @@ export default function Interview({ session, onDone }) {
             <video ref={videoRef} autoPlay muted playsInline />
           </div>
         )}
-        <button className="link" onClick={() => setShowCam((s) => !s)}>
+        <button className="link camera-preview-toggle" onClick={() => setShowCam((s) => !s)}>
           {showCam ? 'Hide camera preview' : 'Show camera preview'}
         </button>
       </div>
@@ -363,7 +363,7 @@ export default function Interview({ session, onDone }) {
                 />
               </form>
               <span className="muted phase">{endError ? '' : phaseLabel(phase)}</span>
-              <button className="link" onClick={() => finish({ clicked: true })} disabled={phase === 'ending'}>
+              <button className="link end-interview" onClick={() => finish({ clicked: true })} disabled={phase === 'ending'}>
                 End interview
               </button>
             </div>

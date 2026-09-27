@@ -63,7 +63,7 @@ label, .label { display: block; margin: 16px 0 6px; font-weight: 600; }
 .typed { flex: 1; min-width: 180px; }
 .typed input { margin: 0; }
 .mic.on { background: #d6453d; border-color: #d6453d; }
-.phase { font-size: 13px; }
+.phase { font-size: 13px; font-weight: 700; }
 .bar { height: 8px; background: #232730; border-radius: 99px; overflow: hidden; margin: 24px auto; max-width: 320px; }
 .bar div { height: 100%; background: var(--accent); transition: width 0.5s; }
 .breathe { text-align: center; padding: 12px; }
@@ -124,6 +124,11 @@ button.primary { background: var(--accent); }
 button.primary:hover:not(:disabled) { border-color: #0e5e57; background: #0e5e57; box-shadow: 0 5px 14px rgba(20, 118, 109, 0.18); }
 button.link { color: var(--muted); text-decoration: none; font-weight: 500; }
 button.link:hover:not(:disabled) { color: #0e5e57; }
+button.link.camera-preview-toggle { color: #f2f2f2; }
+button.link.camera-preview-toggle:hover:not(:disabled) { color: #bdbdbd; }
+button.link.camera-preview-toggle:not(:active) { background: #000; }
+button.link.end-interview { background: #d6453d; color: #f2f2f2; text-decoration: none; }
+button.link.end-interview:hover:not(:disabled) { background: #b91c1c; color: #bdbdbd; }
 input { border-radius: 6px; border-color: var(--border); background: #fbfcfc; }
 input:not([type='range']):focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(20, 118, 109, 0.1); outline: none; }
 input[type='range'] { accent-color: var(--accent); }
@@ -148,12 +153,14 @@ input[type='range'] { accent-color: var(--accent); }
 .cam video { display: block; aspect-ratio: 16 / 10; border-radius: 6px; background: #e8efed; object-fit: cover; }
 .bubble { max-width: 85%; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
 .bubble .who { font-size: 11px; font-weight: 700; text-transform: uppercase; }
-.bubble.interviewer { background: #f5f8f7; }
+.bubble.interviewer { background: #e5e7eb; }
 .bubble.candidate { border-color: #c9e5df; background: #e4f2ef; }
+.replay-transcript-line { padding: 8px 10px; border-radius: 6px; }
+.replay-transcript-line.interviewer { background: #e5e7eb; }
 .controls { padding-top: 16px; }
-.mic.on { border-color: #bd4c46; background: #bd4c46; color: #fff; }
-.mic:not(.on) { border-color: var(--accent); background: var(--accent); color: #fff; }
-.mic:not(.on):hover:not(:disabled) { border-color: #0e5e57; background: #0e5e57; color: #fff; }
+.mic.on { border-color: #bd4c46; background: #bd4c46; color: #f2f2f2; }
+.mic:not(.on) { border-color: var(--accent); background: var(--accent); color: #f2f2f2; }
+.mic:not(.on):hover:not(:disabled) { border-color: #0e5e57; background: #0e5e57; color: #f2f2f2; }
 .bar { background: #e5eeeb; }
 .bar div { border-radius: inherit; }
 .circle { border-color: #4b9b72; background: rgba(75, 155, 114, 0.12); }
