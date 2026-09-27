@@ -31,7 +31,7 @@ const FEEDBACK_TIMEOUT_MS = Number(process.env.GEMINI_FEEDBACK_TIMEOUT_MS || 250
 // Gemini 3 Flash thinks at "high" by default, which is slow for a spoken reply.
 // Values are the SDK's ThinkingLevel enum: MINIMAL | LOW | MEDIUM | HIGH.
 const THINKING_LEVEL = (process.env.GEMINI_THINKING_LEVEL || 'LOW').toUpperCase();
-const BRIEFING_THINKING_LEVEL = (process.env.GEMINI_BRIEFING_THINKING_LEVEL || 'MEDIUM').toUpperCase();
+const BRIEFING_THINKING_LEVEL = (process.env.GEMINI_BRIEFING_THINKING_LEVEL || 'LOW').toUpperCase();
 
 export class InterviewerError extends Error {
   constructor(message, { stage = 'turn', cause } = {}) {
@@ -320,9 +320,10 @@ async function generateTurn({ persona, role, jobDetails, history, state, questio
   let issues = reviewTurn(draft, { history, latest, closing, state, persona });
   if (!issues.length) return finalTurn(draft, briefing);
   // Rapid-fire: a second Gemini call costs more time than a small issue is worth. Rewrite only for
-  // fatal problems or a reply too long to be rapid.
-  if (style.rewriteMinor === false && !issues.some((i) => isFatal(i) || i.startsWith('too long'))) {
-    console.error(`[interviewer] minor issues, keeping the rapid-fire pace: ${issues.join('; ')}`);
+  // fatal problems or a reply too long to be rapid. Other styles rewrite only for issues worth a second call.
+  const worthRewrite = style.rewriteMinor === false ? (i) => isFatal(i) || i.startsWith('too long') : needsRewrite;
+  if (!issues.some(worthRewrite)) {
+    console.error(`[interviewer] minor issues, using the draft as-is: ${issues.join('; ')}`);
     return finalTurn(draft, briefing);
   }
 
@@ -426,6 +427,10 @@ const GENERIC = [
   [/\bas an ai\b|\blanguage model\b/i, 'broke character'],
 ];
 const FATAL_PREFIXES = ['generic', 'empty praise', '"tell me more"', '"can you elaborate"', '"thanks for sharing"', 'broke character', 'no question', 'empty reply'];
+// Worth a second Gemini call (a rewrite). Smaller issues (a near-repeat, loose wording) are logged and used
+// as-is, so most turns take one call.
+const REWRITE_PREFIXES = [...FATAL_PREFIXES, 'did not say which part', '"heard"', 'repeats', 'too long'];
+const needsRewrite = (issue) => REWRITE_PREFIXES.some((p) => issue.startsWith(p));
 const isFatal = (issue) => FATAL_PREFIXES.some((p) => issue.startsWith(p));
 
 const STOP = new Set(

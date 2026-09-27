@@ -40,7 +40,7 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL || '',
 
   // Stress logic tuning
-  baselineMs: Number(process.env.BASELINE_MS || 30000),
+  baselineMs: Number(process.env.BASELINE_MS || 12000),
   windowMs: Number(process.env.WINDOW_MS || 10000),
   elevatedPct: Number(process.env.ELEVATED_PCT || 0.15),
   overloadPct: Number(process.env.OVERLOAD_PCT || 0.30),
