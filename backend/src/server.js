@@ -8,7 +8,6 @@ import { WebSocketServer } from 'ws';
 import { config } from './config.js';
 import { nextTurn, feedback, prepareInterviewer, PERSONAS } from './interviewer.js';
 import { speak } from './voice.js';
-import { db, dbEnabled } from './db.js';
 import { presageAvailable, presageLoadError, createPresageSession } from './presage.js';
 import { createSessionService } from './services/sessionService.js';
 import { createInterviewService } from './services/interviewService.js';
@@ -22,11 +21,10 @@ app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
 const sessionService = createSessionService({
-  db,
   personas: Object.keys(PERSONAS),
   destroySensor: destroyPresageSensor,
 });
-const vitalsService = createVitalsService({ db, broadcast, isActive: (s) => sessionService.active() === s });
+const vitalsService = createVitalsService({ broadcast, isActive: (s) => sessionService.active() === s });
 const feedbackService = createFeedbackService({
   generateFeedback: feedback,
   findSpikes,
@@ -43,7 +41,6 @@ function addUtterance(s, speaker, text) {
   const u = { ts: Date.now(), speaker, text, state: s.engine.state };
   if (speaker === 'interviewer' && s.lastAction) u.action = s.lastAction; // lets findSpikes skip breathing prompts
   s.utterances.push(u);
-  db.addUtterance(s.id, u);
   broadcast(s.id, { type: 'utterance', ...u });
   return u;
 }
@@ -66,7 +63,6 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     gemini: Boolean(config.geminiKey),
     elevenlabs: Boolean(config.elevenKey),
-    database: dbEnabled,
     vitalsSources: vitalsSockets.size,
     sensorStatus: vitalsService.sensorStatus,
     presageServer: presageAvailable(),
@@ -274,7 +270,7 @@ server.listen(config.port, () => {
   console.log(
     `  Gemini: ${config.geminiKey ? 'on' : 'OFF: interviewer will not work, set GEMINI_API_KEY'} | ElevenLabs: ${
       config.elevenKey ? 'on' : 'off (browser voice)'
-    } | Tiger Data: ${dbEnabled ? 'on' : 'off (memory only)'}`,
+    }`,
   );
   if (config.presageMode === 'server') {
     console.log(`  Heart rate: SERVER mode (browser streams the webcam here). Presage ${presageAvailable() ? 'ready' : `not ready: ${presageLoadError() || 'PRESAGE_API_KEY is empty'}`}. Do NOT also run the bridge.`);

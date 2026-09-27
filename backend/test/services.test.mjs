@@ -7,13 +7,8 @@ import { createSessionService } from '../src/services/sessionService.js';
 import { createVitalsService } from '../src/services/vitalsService.js';
 
 test('session service owns creation, active lookup, and idempotent end', () => {
-  const databaseCalls = [];
   const endedSensors = [];
   const sessions = createSessionService({
-    db: {
-      createSession: (session) => databaseCalls.push(['create', session.id]),
-      endSession: (id, baseline) => databaseCalls.push(['end', id, baseline]),
-    },
     personas: ['friendly', 'cold'],
     destroySensor: (session) => endedSensors.push(session.id),
   });
@@ -31,11 +26,6 @@ test('session service owns creation, active lookup, and idempotent end', () => {
   assert.equal(sessions.active(), null);
   assert.equal(sessions.get(second.id), second);
   assert.deepEqual(endedSensors, [second.id]);
-  assert.deepEqual(databaseCalls, [
-    ['create', first.id],
-    ['create', second.id],
-    ['end', second.id, 72.5],
-  ]);
 });
 
 test('interview service owns turn state and delegates AI, transcript, and speech', async () => {
@@ -73,7 +63,6 @@ test('interview service owns turn state and delegates AI, transcript, and speech
 });
 
 test('vitals service rejects invalid readings and publishes accepted readings', () => {
-  const stored = [];
   const published = [];
   const session = {
     id: 'session-1',
@@ -84,15 +73,13 @@ test('vitals service rejects invalid readings and publishes accepted readings', 
     },
   };
   const service = createVitalsService({
-    db: { addVitals: (id, vital) => stored.push([id, vital]) },
     broadcast: (id, message) => published.push([id, message]),
   });
 
   assert.equal(service.ingest(session, { hr: -1 }), null);
   const vital = service.ingest(session, { ts: 100, hr: 73, br: 15 });
-  assert.deepEqual(vital, { ts: 100, hr: 73, hrSmooth: 73, br: 15, confidence: null, state: 'calm' });
+  assert.deepEqual(vital, { ts: 100, hr: 73, hrSmooth: 73, br: 15, hrv: null, confidence: null, state: 'calm' });
   assert.deepEqual(session.vitals, [vital]);
-  assert.deepEqual(stored, [['session-1', vital]]);
   assert.equal(published[0][1].type, 'vitals');
   assert.equal(published[0][1].baseline, 72);
 });

@@ -86,7 +86,6 @@ The app **will not run an interview without a Gemini key**. The other keys add f
 | `GEMINI_API_KEY` | **Yes** | [Google AI Studio](https://aistudio.google.com/apikey) → *Create API key* | `backend/.env` |
 | `PRESAGE_API_KEY` | For real heart rate | [Presage developer portal](https://physiology.presagetech.com) → log in and copy your key | `presage-bridge/.env` (or `backend/.env`; the bridge falls back to it) |
 | `ELEVENLABS_API_KEY` | Optional | [ElevenLabs](https://elevenlabs.io) → *Developers* → *API keys* (enable Text to Speech and read access to Voices) | `backend/.env` |
-| `DATABASE_URL` | Optional | Tiger Data (Tiger Cloud console) Postgres connection string. Without it, sessions stay in memory. | `backend/.env` |
 
 Check that each key works before you start:
 

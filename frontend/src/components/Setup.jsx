@@ -109,7 +109,6 @@ export default function Setup({ onStart }) {
         />
         <Status ok={health?.gemini} label="Gemini" off="required for the interviewer" />
         <Status ok={health?.elevenlabs} label="ElevenLabs" off="browser voice" />
-        <Status ok={health?.database} label="Tiger Data" off="memory only" />
       </div>
 
       {health?.sensorStatus && <p className="sensor-hint">📷 {health.sensorStatus}</p>}
