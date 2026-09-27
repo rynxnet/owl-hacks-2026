@@ -20,6 +20,11 @@ export class GoogleGenAI {
       generateContent: async (req) => {
         const route = req.model + '|' + apiKey;
         globalThis.__calls.push(route);
+        const level = req.config?.thinkingConfig?.thinkingLevel;
+        globalThis.__levels.push(level || 'none');
+        // Real Gemini wording for a thinking level the model doesn't have.
+        if (level && (globalThis.__rejectLevels || []).includes(level))
+          throw new Error('{"error":{"code":400,"message":"Thinking level ' + level + ' is not supported for this model.","status":"INVALID_ARGUMENT"}}');
         const next = (globalThis.__script[route] || []).shift();
         if (next === '503') throw new Error('{"error":{"code":503,"message":"The model is overloaded. Please try again later.","status":"UNAVAILABLE"}}');
         if (next === '429') throw new Error('{"error":{"code":429,"message":"You exceeded your current quota","status":"RESOURCE_EXHAUSTED"}}');
@@ -59,6 +64,7 @@ let n = 0;
 async function scenario(script) {
   iv._resetGeminiRoutes();
   globalThis.__calls = [];
+  globalThis.__levels = [];
   globalThis.__script = JSON.parse(JSON.stringify(script));
   // New role each time so the interviewer briefing (cached per setup) is rebuilt: 2 calls per scenario when healthy.
   try {
@@ -97,6 +103,24 @@ for (const k of Object.keys(all429)) all503[k] = ['503', '503'];
 r = await scenario(all503);
 check('[503 everywhere] clear "overloaded" error', r.error?.code === 'AI_INTERVIEWER_FAILED' && /overloaded right now/.test(r.error.message), r.error?.message);
 check('[503 everywhere] tried every route before giving up', new Set(globalThis.__calls).size === 4, globalThis.__calls.join());
+
+// A model that rejects a thinking level must not be treated as a missing model (it used to be marked dead
+// because the error says "not supported").
+globalThis.__rejectLevels = ['LOW'];
+r = await scenario({});
+check('[thinking] LOW rejected: turn still answered on the main model and key', r.value?.source === 'gemini' && globalThis.__calls.every((c) => c === 'main-flash|key1'), globalThis.__calls.join());
+check('[thinking] retried without thinkingConfig after the rejection', globalThis.__levels.join() === 'LOW,none,none', globalThis.__levels.join());
+globalThis.__levels = [];
+globalThis.__calls = [];
+const again = await iv.nextTurn({ persona: 'cold', role: `Threat Hunter ${++n}`, history: [], state: 'calm', questionCount: 0, maxQuestions: 5 }).catch((e) => ({ e }));
+check('[thinking] remembered: later calls skip the rejected level', again.source === 'gemini' && !globalThis.__levels.includes('LOW'), globalThis.__levels.join());
+globalThis.__rejectLevels = ['MINIMAL'];
+iv._resetGeminiRoutes();
+globalThis.__levels = [];
+globalThis.__calls = [];
+const rapid = await iv.nextTurn({ persona: 'rapid', role: `Threat Hunter ${++n}`, history: [], state: 'calm', questionCount: 0, maxQuestions: 5 }).catch((e) => ({ e }));
+check('[thinking] rapid style works on a model without MINIMAL, and asks for LOW', rapid.source === 'gemini' && !globalThis.__levels.includes('MINIMAL') && globalThis.__levels.includes('LOW'), globalThis.__levels.join() + ' ' + (rapid.e?.message || ''));
+globalThis.__rejectLevels = [];
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

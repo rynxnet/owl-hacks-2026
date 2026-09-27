@@ -82,7 +82,8 @@ export const STYLES = {
     question: 'One short, direct question under 18 words, ending with "?". One part only. Empty only for "breathe" or "end".',
     opener: 'Say only your name and title (a few words, no context sentence), then immediately ask',
     followUps: 1,
-    thinking: (process.env.GEMINI_RAPID_THINKING_LEVEL || 'MINIMAL').toUpperCase(), // less thinking = faster replies
+    // LOW, not MINIMAL: some Flash models reject MINIMAL. Speed comes mostly from the word cap below.
+    thinking: (process.env.GEMINI_RAPID_THINKING_LEVEL || 'LOW').toUpperCase(),
     maxWords: 40, // longer replies get one rewrite
     rewriteMinor: false, // other small issues are used as-is instead of costing a second Gemini call
   },
@@ -660,6 +661,8 @@ let preferred = 0; // index of the route that last worked; tried first
 const kindOf = (err) => {
   const m = String(err?.message || err);
   if (/timed out|abort/i.test(m)) return 'timeout';
+  // Checked before "not supported" below, so a rejected thinking level never marks the model as missing.
+  if (/thinking/i.test(m) && /not supported|unsupported|invalid|INVALID_ARGUMENT|\b400\b/i.test(m)) return 'bad_thinking';
   if (/\b429\b|RESOURCE_EXHAUSTED|quota|rate limit/i.test(m)) return 'quota';
   if (/\b50[0234]\b|UNAVAILABLE|overloaded|INTERNAL|DEADLINE_EXCEEDED|fetch failed|ECONNRESET|ETIMEDOUT|socket hang up/i.test(m)) return 'busy';
   if (/\b404\b|NOT_FOUND|is not found|not supported/i.test(m)) return 'no_model';
@@ -697,7 +700,7 @@ async function generateJson({ contents, systemInstruction, schema, timeoutMs, th
         const kind = kindOf(err);
         failures.push({ route, kind, message: String(err.message || err).slice(0, 160) });
         console.error(`[gemini] ${routeName(route)} failed (${kind}): ${String(err.message || err).slice(0, 200)}`);
-        if (kind === 'timeout' || kind === 'bad_request' || kind === 'other') return fail(failures);
+        if (kind === 'timeout' || kind === 'bad_request' || kind === 'bad_thinking' || kind === 'other') return fail(failures);
         if (kind === 'no_model' || kind === 'bad_key') {
           route.dead = true;
           break;
@@ -735,12 +738,28 @@ function fail(failures, extra = '') {
 }
 
 // A 400 on the tuned config (e.g. a model without thinkingLevel): retry that route once with a bare config.
+// A rejected thinking level: remember it for this route and retry once with the next level that may work
+// (MINIMAL -> LOW -> no thinkingConfig), keeping the JSON schema.
+const THINKING_FALLBACK = { MINIMAL: 'LOW', LOW: null, MEDIUM: 'LOW', HIGH: 'MEDIUM' };
+function thinkingFor(route, level) {
+  let lvl = level;
+  while (lvl && route.badThinking?.has(lvl)) lvl = THINKING_FALLBACK[lvl] ?? null;
+  return lvl;
+}
+
 async function callWithLean({ route, contents, systemInstruction, schema, timeoutMs, thinkingLevel }) {
   const start = Date.now();
   try {
-    return await callOnce({ route, contents, systemInstruction, schema, timeoutMs, lean: route.lean, thinkingLevel });
+    return await callOnce({ route, contents, systemInstruction, schema, timeoutMs, lean: route.lean, thinkingLevel: thinkingFor(route, thinkingLevel) });
   } catch (err) {
     const remaining = timeoutMs - (Date.now() - start);
+    const used = thinkingFor(route, thinkingLevel);
+    if (!route.lean && used && kindOf(err) === 'bad_thinking' && remaining > 1500) {
+      (route.badThinking ||= new Set()).add(used);
+      const next = thinkingFor(route, used);
+      console.error(`[gemini] ${routeName(route)} does not support thinking level ${used}, using ${next || 'the model default'}:`, err.message);
+      return callWithLean({ route, contents, systemInstruction, schema, timeoutMs: remaining, thinkingLevel: next });
+    }
     if (!route.lean && kindOf(err) === 'bad_request' && remaining > 1500) {
       console.error(`[gemini] ${routeName(route)} rejected the request config, retrying without thinkingConfig/schema:`, err.message);
       const parsed = await callOnce({ route, contents, systemInstruction, schema, timeoutMs: remaining, lean: true });
@@ -769,7 +788,7 @@ async function callOnce({ route, contents, systemInstruction, schema, timeoutMs,
   if (systemInstruction) cfg.systemInstruction = systemInstruction;
   if (!lean) {
     cfg.responseJsonSchema = schema;
-    cfg.thinkingConfig = { thinkingLevel };
+    if (thinkingLevel) cfg.thinkingConfig = { thinkingLevel };
   }
   try {
     const call = route.client.models.generateContent({ model: route.model, contents, config: cfg });
@@ -784,7 +803,7 @@ async function callOnce({ route, contents, systemInstruction, schema, timeoutMs,
 // For tests: reset route health between scenarios.
 export function _resetGeminiRoutes() {
   preferred = 0;
-  for (const r of ROUTES) Object.assign(r, { coolUntil: 0, dead: false, lean: false });
+  for (const r of ROUTES) Object.assign(r, { coolUntil: 0, dead: false, lean: false, badThinking: undefined });
 }
 
 // res.text is a getter that can be undefined (safety block, thoughts only) or warn/throw on odd responses.
