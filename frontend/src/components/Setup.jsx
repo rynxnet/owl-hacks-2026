@@ -33,7 +33,7 @@ export default function Setup({ onStart }) {
 
   return (
     <div className="card setup">
-      <h1>Pressure Test</h1>
+      <h1>Interview Pressure Test</h1>
       <p className="muted">A mock interviewer that reads your heart rate and adapts to it.</p>
 
       <label>
@@ -46,7 +46,7 @@ export default function Setup({ onStart }) {
         {PERSONAS.map((p) => (
           <button
             key={p.id}
-            className={`persona ${persona === p.id ? 'selected' : ''}`}
+            className={`persona ${p.id} ${persona === p.id ? 'selected' : ''}`}
             onClick={() => setPersona(p.id)}
           >
             <strong>{p.label}</strong>

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=Metal+Mania&display=swap');
 
 :root {
   --bg: #edf2f1;
@@ -78,7 +78,9 @@ body {
   min-width: 320px;
   min-height: 100vh;
   line-height: 1.5;
-  background: linear-gradient(135deg, #f5f8f7 0%, #eaf0ef 100%);
+  background:
+    linear-gradient(rgba(245, 248, 247, 0.16), rgba(234, 240, 239, 0.24)),
+    url('/navyBlueBack.png') center / cover fixed no-repeat;
   font-family: 'DM Sans', 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -94,7 +96,7 @@ body::before {
 }
 main { position: relative; z-index: 1; max-width: 1320px; padding: 36px 24px 56px; }
 h1, h2, h3, h4 { font-family: 'Manrope', 'DM Sans', sans-serif; line-height: 1.2; }
-h1 { font-size: 32px; font-weight: 800; }
+h1 { font-family: 'Metal Mania', 'Manrope', sans-serif; font-size: 32px; font-weight: 400; }
 h2 { font-size: 22px; font-weight: 700; }
 .card {
   padding: 24px;
@@ -118,12 +120,17 @@ button.primary:hover:not(:disabled) { border-color: #0e5e57; background: #0e5e57
 button.link { color: var(--muted); text-decoration: none; font-weight: 500; }
 button.link:hover:not(:disabled) { color: #0e5e57; }
 input { border-radius: 6px; border-color: var(--border); background: #fbfcfc; }
-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(20, 118, 109, 0.1); outline: none; }
+input:not([type='range']):focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(20, 118, 109, 0.1); outline: none; }
 input[type='range'] { accent-color: var(--accent); }
 .setup { max-width: 720px; margin: min(7vh, 72px) auto; padding: 32px; animation: enter 420ms ease both; }
-.persona { min-height: 90px; justify-content: center; }
+.setup > h1 { text-align: center; font-size: 40px; }
+.setup > button.primary { display: block; margin: 16px auto 0; box-shadow: 0 2px 7px rgba(29, 56, 51, 0.24); }
+.persona { min-height: 90px; justify-content: center; box-shadow: 0 2px 6px rgba(29, 56, 51, 0.2); }
 .persona span { font-weight: 400; line-height: 1.4; }
-.persona.selected { border-color: var(--accent); background: #e4f2ef; color: #0e5e57; box-shadow: inset 0 0 0 1px var(--accent); }
+.persona.selected { border-color: var(--accent); background: #e4f2ef; color: #0e5e57; box-shadow: 0 2px 6px rgba(29, 56, 51, 0.2), inset 0 0 0 1px var(--accent); }
+.persona.friendly.selected { border-color: #4d7c0f; background: #dcfce7; color: #365314; box-shadow: 0 2px 6px rgba(29, 56, 51, 0.2), inset 0 0 0 1px #4d7c0f; }
+.persona.cold.selected { border-color: #1d4ed8; background: #dbeafe; color: #1e3a8a; box-shadow: 0 2px 6px rgba(29, 56, 51, 0.2), inset 0 0 0 1px #1d4ed8; }
+.persona.rapid.selected { border-color: #c2414b; background: #fde2e4; color: #8f2930; box-shadow: 0 2px 6px rgba(29, 56, 51, 0.2), inset 0 0 0 1px #c2414b; }
 .pill { border-color: var(--border); background: #f5f8f7; font-size: 12px; font-weight: 600; }
 .pill.ok { border-color: #c9e5d7; background: #edf7f1; color: #23764f; }
 .interview { grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: 18px; align-items: start; }
@@ -140,6 +147,8 @@ input[type='range'] { accent-color: var(--accent); }
 .bubble.candidate { border-color: #c9e5df; background: #e4f2ef; }
 .controls { padding-top: 16px; }
 .mic.on { border-color: #bd4c46; background: #bd4c46; color: #fff; }
+.mic:not(.on) { border-color: var(--accent); background: var(--accent); color: #fff; }
+.mic:not(.on):hover:not(:disabled) { border-color: #0e5e57; background: #0e5e57; color: #fff; }
 .bar { background: #e5eeeb; }
 .bar div { border-radius: inherit; }
 .circle { border-color: #4b9b72; background: rgba(75, 155, 114, 0.12); }
@@ -154,6 +163,7 @@ input[type='range'] { accent-color: var(--accent); }
 @media (max-width: 600px) {
   main { padding: 20px 14px 36px; }
   .setup { margin: 16px auto; padding: 22px 18px; }
+  .setup > h1 { font-size: 32px; }
   h1 { font-size: 28px; }
   .card { padding: 18px; }
   .right { min-height: 480px; }

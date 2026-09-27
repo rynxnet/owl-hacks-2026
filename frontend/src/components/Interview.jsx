@@ -342,7 +342,7 @@ export default function Interview({ session, onDone }) {
                 onClick={toggleMic}
                 disabled={phase !== 'answering'}
               >
-                {recording ? '■ Stop and send' : '🎤 Answer'}
+                {recording ? '■ Stop and send' : '● Record'}
               </button>
               <form onSubmit={sendTyped} className="typed">
                 <input
