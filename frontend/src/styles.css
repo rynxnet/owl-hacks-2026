@@ -224,3 +224,10 @@ input[type='range'] { accent-color: var(--accent); }
   .interview .right { position: sticky; top: 16px; height: calc(100vh - 72px); min-height: 560px; }
   .interview .right .transcript { max-height: none; min-height: 0; }
 }
+
+/* ". . ." while waiting for the first heart-rate reading */
+.wait-dots { color: var(--text); font-size: 1.35em; font-weight: 900; line-height: 0.7; }
+.wait-dots i { font-style: normal; margin-right: 0.12em; animation: wait-dot 1.4s infinite; }
+.wait-dots i:nth-child(2) { animation-delay: 0.2s; }
+.wait-dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes wait-dot { 0%, 60%, 100% { opacity: 0.3; } 30% { opacity: 1; } }

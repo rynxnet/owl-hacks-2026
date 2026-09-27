@@ -273,7 +273,7 @@ export default function Interview({ session, onDone }) {
         <div className="card">
           <div className="row between">
             <div>
-              <div className="big" style={{ color }}>{latest ? Math.round(latest.hr) : '--'} <small>bpm</small></div>
+              <div className="big" style={{ color }}>{latest ? Math.round(latest.hr) : <span className="wait-dots" aria-label="Waiting for heart rate"><i>.</i><i>.</i><i>.</i></span>} <small>bpm</small></div>
               <div className="state" style={{ background: color }}>{snap.state}</div>
             </div>
             <div className="muted right-text">
