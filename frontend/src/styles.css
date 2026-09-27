@@ -224,3 +224,38 @@ input[type='range'] { accent-color: var(--accent); }
   .interview .right { position: sticky; top: 16px; height: calc(100vh - 72px); min-height: 560px; }
   .interview .right .transcript { max-height: none; min-height: 0; }
 }
+
+/* Waiting for Presage: pulse search + baseline calibration */
+.wait-dots { display: inline-flex; gap: 6px; align-items: center; height: 48px; vertical-align: middle; }
+.wait-dots i { width: 13px; height: 13px; border-radius: 50%; background: var(--accent); animation: wait-dot 1.2s ease-in-out infinite; }
+.wait-dots i:nth-child(2) { animation-delay: 0.15s; }
+.wait-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes wait-dot { 0%, 80%, 100% { opacity: 0.25; transform: scale(0.7); } 40% { opacity: 1; transform: scale(1); } }
+
+.anim-ellipsis::after { content: ''; display: inline-block; width: 1.2em; text-align: left; animation: ellipsis 1.5s steps(4, end) infinite; }
+@keyframes ellipsis { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75%, 100% { content: '...'; } }
+
+.heart-beat { display: inline-block; font-size: 56px; line-height: 1; color: #d0463f; animation: heartbeat 1.1s ease-in-out infinite; }
+.heart-beat.small { font-size: 20px; }
+.heart-beat.calibrating { color: #d0463f; animation-duration: 0.9s; }
+.heart-beat.ready { color: var(--accent); animation: none; }
+@keyframes heartbeat { 0%, 60%, 100% { transform: scale(1); } 15% { transform: scale(1.25); } 30% { transform: scale(1.05); } 45% { transform: scale(1.18); } }
+
+.pulse-status { margin: 12px 0 4px; padding: 12px 14px; border-radius: 8px; border: 2px solid var(--accent); background: #eef7f5; }
+.pulse-status.searching { border-color: #d59a2b; background: #fff7e8; }
+.pulse-status-head { display: flex; align-items: center; gap: 10px; font-size: 16px; }
+.pulse-status-head strong { flex: 1; }
+.pulse-pct { color: var(--accent); font-variant-numeric: tabular-nums; }
+.pulse-secs { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+.pulse-tips { margin: 6px 0 0; font-weight: 600; font-size: 14px; }
+.pulse-help { margin: 8px 0 0; font-size: 13px; color: #77511b; }
+.pulse-help code { background: #f3e6cc; color: #5a3d12; }
+
+.hold-still { font-size: 18px; font-weight: 700; margin: 6px 0 16px; }
+.steps { list-style: none; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 0; margin: 0 0 8px; }
+.steps li { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+.steps li.active { border-color: var(--accent); color: var(--accent); font-weight: 700; background: #eef7f5; }
+.steps li.done { border-color: transparent; background: var(--accent); color: white; }
+.steps li.done::before { content: '✓ '; }
+.bar.indeterminate div { width: 35%; animation: indeterminate 1.4s ease-in-out infinite; }
+@keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
