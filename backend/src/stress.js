@@ -16,13 +16,13 @@ import { median } from './vitalsFilter.js';
 //    so the interviewer doesn't flip back and forth on noise.
 //
 // Extra env vars (the rest are in config.js):
-//   BASELINE_MIN_SAMPLES=8      readings needed before the baseline can lock
+//   BASELINE_MIN_SAMPLES=5      readings needed before the baseline can lock
 //   BASELINE_MAX_GAP_MS=5000    readings further apart than this aren't "regular"
-//   BASELINE_STEADY_N=3         regular readings in a row before the baseline window starts
+//   BASELINE_STEADY_N=2         regular readings in a row before the baseline window starts
 const envNum = (name, fallback) => (process.env[name] ? Number(process.env[name]) : fallback);
-const BASELINE_MIN_SAMPLES = envNum('BASELINE_MIN_SAMPLES', 8);
+const BASELINE_MIN_SAMPLES = envNum('BASELINE_MIN_SAMPLES', 5);
 const BASELINE_MAX_GAP_MS = envNum('BASELINE_MAX_GAP_MS', 5000);
-const BASELINE_STEADY_N = Math.max(1, envNum('BASELINE_STEADY_N', 3));
+const BASELINE_STEADY_N = Math.max(1, envNum('BASELINE_STEADY_N', 2));
 
 export class StressEngine {
   constructor() {

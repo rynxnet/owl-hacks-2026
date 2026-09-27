@@ -370,7 +370,7 @@ export default function Interview({ session, onDone }) {
                 takeTurn('');
               }}
             >
-              Skip baseline (no heart-rate data)
+              Start now (calibration finishes in the background)
             </button>
           </div>
         )}

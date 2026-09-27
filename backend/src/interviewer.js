@@ -2,7 +2,14 @@ import { GoogleGenAI } from '@google/genai';
 import { config } from './config.js';
 import { seniorityOf, normalizeRole, normalizeJobDetails } from './roles.js';
 
-const ai = config.geminiKey ? new GoogleGenAI({ apiKey: config.geminiKey }) : null;
+// Gemini routes: every (model, key) pair to try, primary model first. A busy (503) or out-of-quota (429)
+// route is skipped for a while and the next one is used, so one overloaded model or one exhausted free-tier
+// key doesn't stop the interview. Every route is still Gemini: nothing here is canned.
+const clients = config.geminiKeys.map((key) => new GoogleGenAI({ apiKey: key }));
+const ROUTES = config.geminiModels.flatMap((model) =>
+  clients.map((client, keyIndex) => ({ model, client, keyIndex, coolUntil: 0, dead: false })),
+);
+const ai = clients[0] || null;
 
 // How the AI interviewer works (one agent, three steps):
 //  1. BRIEF   once per interview: Gemini reads the role + pasted job posting and builds the interviewer
@@ -24,7 +31,7 @@ const FEEDBACK_TIMEOUT_MS = Number(process.env.GEMINI_FEEDBACK_TIMEOUT_MS || 250
 // Gemini 3 Flash thinks at "high" by default, which is slow for a spoken reply.
 // Values are the SDK's ThinkingLevel enum: MINIMAL | LOW | MEDIUM | HIGH.
 const THINKING_LEVEL = (process.env.GEMINI_THINKING_LEVEL || 'LOW').toUpperCase();
-const BRIEFING_THINKING_LEVEL = (process.env.GEMINI_BRIEFING_THINKING_LEVEL || 'MEDIUM').toUpperCase();
+const BRIEFING_THINKING_LEVEL = (process.env.GEMINI_BRIEFING_THINKING_LEVEL || 'LOW').toUpperCase();
 
 export class InterviewerError extends Error {
   constructor(message, { stage = 'turn', cause } = {}) {
@@ -296,7 +303,7 @@ export async function nextTurn({ persona, role, jobDetails = '', history = [], s
     const error =
       err instanceof InterviewerError
         ? err
-        : new InterviewerError(`The AI interviewer's response could not be generated: Gemini request failed (${err.message}).`, { cause: err });
+        : new InterviewerError(`The AI interviewer's response could not be generated: ${err.message}.`, { cause: err });
     console.error(`[interviewer] ${error.stage} failed:`, error.message);
     throw error;
   }
@@ -313,9 +320,10 @@ async function generateTurn({ persona, role, jobDetails, history, state, questio
   let issues = reviewTurn(draft, { history, latest, closing, state, persona });
   if (!issues.length) return finalTurn(draft, briefing);
   // Rapid-fire: a second Gemini call costs more time than a small issue is worth. Rewrite only for
-  // fatal problems or a reply too long to be rapid.
-  if (style.rewriteMinor === false && !issues.some((i) => isFatal(i) || i.startsWith('too long'))) {
-    console.error(`[interviewer] minor issues, keeping the rapid-fire pace: ${issues.join('; ')}`);
+  // fatal problems or a reply too long to be rapid. Other styles rewrite only for issues worth a second call.
+  const worthRewrite = style.rewriteMinor === false ? (i) => isFatal(i) || i.startsWith('too long') : needsRewrite;
+  if (!issues.some(worthRewrite)) {
+    console.error(`[interviewer] minor issues, using the draft as-is: ${issues.join('; ')}`);
     return finalTurn(draft, briefing);
   }
 
@@ -419,6 +427,10 @@ const GENERIC = [
   [/\bas an ai\b|\blanguage model\b/i, 'broke character'],
 ];
 const FATAL_PREFIXES = ['generic', 'empty praise', '"tell me more"', '"can you elaborate"', '"thanks for sharing"', 'broke character', 'no question', 'empty reply'];
+// Worth a second Gemini call (a rewrite). Smaller issues (a near-repeat, loose wording) are logged and used
+// as-is, so most turns take one call.
+const REWRITE_PREFIXES = [...FATAL_PREFIXES, 'did not say which part', '"heard"', 'repeats', 'too long'];
+const needsRewrite = (issue) => REWRITE_PREFIXES.some((p) => issue.startsWith(p));
 const isFatal = (issue) => FATAL_PREFIXES.some((p) => issue.startsWith(p));
 
 const STOP = new Set(
@@ -638,28 +650,108 @@ Give coaching as JSON: {"summary": "3-4 sentences: what went well, what rattled 
 }
 
 // ---------------------------------------------------------------------------
-// One Gemini JSON call with a hard deadline. Returns a parsed object or null; throws on API errors.
+// Gemini calls: retries, backup models and backup keys.
 // ---------------------------------------------------------------------------
-let leanConfig = false; // flipped if the API rejects thinkingConfig / schema, so we stop sending them
 
+const QUOTA_COOLDOWN_MS = Number(process.env.GEMINI_QUOTA_COOLDOWN_MS || 60000);
+const BUSY_COOLDOWN_MS = Number(process.env.GEMINI_BUSY_COOLDOWN_MS || 15000);
+let preferred = 0; // index of the route that last worked; tried first
+
+const kindOf = (err) => {
+  const m = String(err?.message || err);
+  if (/timed out|abort/i.test(m)) return 'timeout';
+  if (/\b429\b|RESOURCE_EXHAUSTED|quota|rate limit/i.test(m)) return 'quota';
+  if (/\b50[0234]\b|UNAVAILABLE|overloaded|INTERNAL|DEADLINE_EXCEEDED|fetch failed|ECONNRESET|ETIMEDOUT|socket hang up/i.test(m)) return 'busy';
+  if (/\b404\b|NOT_FOUND|is not found|not supported/i.test(m)) return 'no_model';
+  if (/\b40[13]\b|PERMISSION_DENIED|API key not valid|API_KEY_INVALID/i.test(m)) return 'bad_key';
+  if (/\b400\b|INVALID_ARGUMENT/i.test(m)) return 'bad_request';
+  return 'other';
+};
+const routeName = (r) => `${r.model}${clients.length > 1 ? ` (key ${r.keyIndex + 1})` : ''}`;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// One Gemini JSON call with a hard deadline, spread over the available routes. Returns a parsed object
+// or null; throws an Error with a plain-English message if every route failed.
 async function generateJson({ contents, systemInstruction, schema, timeoutMs, thinkingLevel = THINKING_LEVEL }) {
   const deadline = Date.now() + timeoutMs;
+  const now = Date.now();
+  // Healthy routes in preference order, then cooling-down ones as a last resort.
+  const order = ROUTES.map((_, i) => (preferred + i) % ROUTES.length).filter((i) => !ROUTES[i].dead);
+  const ready = order.filter((i) => ROUTES[i].coolUntil <= now);
+  const queue = [...ready, ...order.filter((i) => ROUTES[i].coolUntil > now)];
+  const failures = [];
+
+  for (const i of queue) {
+    const route = ROUTES[i];
+    // A busy route gets one quick second try (503s are often momentary); quota errors move on at once.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const remaining = deadline - Date.now();
+      if (remaining < 1200) return fail(failures, 'out of time');
+      try {
+        const parsed = await callWithLean({ route, contents, systemInstruction, schema, timeoutMs: remaining, thinkingLevel });
+        if (preferred !== i) console.log(`[gemini] now using ${routeName(route)}`);
+        preferred = i;
+        route.coolUntil = 0;
+        return parsed;
+      } catch (err) {
+        const kind = kindOf(err);
+        failures.push({ route, kind, message: String(err.message || err).slice(0, 160) });
+        console.error(`[gemini] ${routeName(route)} failed (${kind}): ${String(err.message || err).slice(0, 200)}`);
+        if (kind === 'timeout' || kind === 'bad_request' || kind === 'other') return fail(failures);
+        if (kind === 'no_model' || kind === 'bad_key') {
+          route.dead = true;
+          break;
+        }
+        if (kind === 'quota') {
+          route.coolUntil = Date.now() + QUOTA_COOLDOWN_MS;
+          break;
+        }
+        // busy
+        if (attempt === 0 && deadline - Date.now() > 3000) {
+          await sleep(700 + Math.random() * 500);
+          continue;
+        }
+        route.coolUntil = Date.now() + BUSY_COOLDOWN_MS;
+        break;
+      }
+    }
+  }
+  return fail(failures);
+}
+
+function fail(failures, extra = '') {
+  const kinds = new Set(failures.map((f) => f.kind));
+  const tried = [...new Set(failures.map((f) => routeName(f.route)))].join(', ') || 'no usable model';
+  let why;
+  if (kinds.size === 1 && kinds.has('quota'))
+    why = `Gemini quota used up (429) on ${tried}. Wait a minute, or add another key in GEMINI_BACKUP_KEYS / another model in GEMINI_FALLBACK_MODELS`;
+  else if ([...kinds].every((k) => k === 'busy' || k === 'quota'))
+    why = `Gemini is overloaded right now (503/429) on ${tried}. Try again in a moment`;
+  else if (kinds.has('timeout')) why = `Gemini took too long to answer (${tried})`;
+  else if ([...kinds].every((k) => k === 'bad_key' || k === 'no_model'))
+    why = `no working Gemini key/model (${failures.map((f) => `${routeName(f.route)}: ${f.message}`).join('; ')}). Run npm run check:gemini`;
+  else why = failures.at(-1)?.message || 'unknown error';
+  throw new Error(!failures.length && extra ? `no time left to call Gemini (${extra})` : why);
+}
+
+// A 400 on the tuned config (e.g. a model without thinkingLevel): retry that route once with a bare config.
+async function callWithLean({ route, contents, systemInstruction, schema, timeoutMs, thinkingLevel }) {
+  const start = Date.now();
   try {
-    return await callOnce({ contents, systemInstruction, schema, timeoutMs, lean: leanConfig, thinkingLevel });
+    return await callOnce({ route, contents, systemInstruction, schema, timeoutMs, lean: route.lean, thinkingLevel });
   } catch (err) {
-    const remaining = deadline - Date.now();
-    // 400 INVALID_ARGUMENT on the tuned config (e.g. a model without thinkingLevel): retry once with a bare one.
-    if (!leanConfig && /\b400\b|INVALID_ARGUMENT/i.test(err.message) && remaining > 1500) {
-      console.error('[gemini] request rejected, retrying without thinkingConfig/schema:', err.message);
-      const parsed = await callOnce({ contents, systemInstruction, schema, timeoutMs: remaining, lean: true });
-      leanConfig = true;
+    const remaining = timeoutMs - (Date.now() - start);
+    if (!route.lean && kindOf(err) === 'bad_request' && remaining > 1500) {
+      console.error(`[gemini] ${routeName(route)} rejected the request config, retrying without thinkingConfig/schema:`, err.message);
+      const parsed = await callOnce({ route, contents, systemInstruction, schema, timeoutMs: remaining, lean: true });
+      route.lean = true;
       return parsed;
     }
     throw err;
   }
 }
 
-async function callOnce({ contents, systemInstruction, schema, timeoutMs, lean, thinkingLevel = THINKING_LEVEL }) {
+async function callOnce({ route, contents, systemInstruction, schema, timeoutMs, lean, thinkingLevel = THINKING_LEVEL }) {
   const controller = new AbortController();
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -680,13 +772,19 @@ async function callOnce({ contents, systemInstruction, schema, timeoutMs, lean, 
     cfg.thinkingConfig = { thinkingLevel };
   }
   try {
-    const call = ai.models.generateContent({ model: config.geminiModel, contents, config: cfg });
+    const call = route.client.models.generateContent({ model: route.model, contents, config: cfg });
     call.catch(() => {}); // the timeout may win the race; don't leave an unhandled rejection behind
     const res = await Promise.race([call, timeout]);
     return parseModelJson(responseText(res));
   } finally {
     clearTimeout(timer);
   }
+}
+
+// For tests: reset route health between scenarios.
+export function _resetGeminiRoutes() {
+  preferred = 0;
+  for (const r of ROUTES) Object.assign(r, { coolUntil: 0, dead: false, lean: false });
 }
 
 // res.text is a getter that can be undefined (safety block, thoughts only) or warn/throw on odd responses.
