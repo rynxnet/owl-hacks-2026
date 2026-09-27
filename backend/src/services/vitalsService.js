@@ -27,6 +27,7 @@ export function createVitalsService({ db, broadcast, isActive = () => true }) {
       hr: reading.hr, // raw accepted value (chart, replay, spikes)
       hrSmooth: reading.hrSmooth, // what the stress engine saw
       br: reading.br,
+      hrv: reading.hrv, // RMSSD in ms (Presage); shown live on the interview screen
       confidence: reading.confidence,
       state: snapshot.state,
     };

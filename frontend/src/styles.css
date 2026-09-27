@@ -207,3 +207,20 @@ input[type='range'] { accent-color: var(--accent); }
 .error-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; font-size: 12px; padding: 10px 12px; border-radius: 6px; border: 1px solid #e3b7b3; background: #fbefee; color: #8a2f29; }
 .error-screen details { margin: 10px 0 16px; }
 .error-screen summary { cursor: pointer; color: var(--muted); }
+
+/* Extra Presage cards (where the camera preview used to be) */
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.tile { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 6px; background: #fbfcfc; }
+.tile-label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
+.tile-value { font-size: 26px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.tile-value small { font-size: 13px; font-weight: 500; color: var(--muted); }
+.tile-note { font-size: 12px; color: var(--muted); }
+.small-text { font-size: 13px; }
+.state-bar { display: flex; height: 10px; margin: 12px 0 8px; border-radius: 99px; overflow: hidden; background: #e5eeeb; }
+.state-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; text-transform: capitalize; color: var(--muted); }
+.state-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; }
+/* Chat column fills the window height so the page isn't lopsided now that the left column is taller */
+@media (min-width: 861px) {
+  .interview .right { position: sticky; top: 16px; height: calc(100vh - 72px); min-height: 560px; }
+  .interview .right .transcript { max-height: none; min-height: 0; }
+}

@@ -17,15 +17,16 @@ export default function Interview({ session, onDone }) {
   const [typed, setTyped] = useState('');
   const [recording, setRecording] = useState(false);
   const [progress, setProgress] = useState({ q: 0, max: 0 });
-  // Preview starts off: with the laptop bridge (default), the bridge owns the webcam and a browser preview
-  // would compete with it. Server-side Presage turns it on (the browser must stream the camera then).
-  const [showCam, setShowCam] = useState(false);
+  // Whole-interview totals (vitals above keeps only the last 300 readings for the chart).
+  const [stats, setStats] = useState({ n: 0, sum: 0, peak: 0, calm: 0, elevated: 0, overloaded: 0 });
   const [turnError, setTurnError] = useState(null); // { answer, turnId } when the backend didn't respond
   const [sensor, setSensor] = useState(''); // Presage hint, e.g. "No face found"
   const [serverPresage, setServerPresage] = useState(false); // backend reads heart rate from our camera
   const [endError, setEndError] = useState(null); // { message, notFound } when /end failed
   const ending = useRef(false); // finish() runs once even if End is clicked while the interviewer also ends
-  const camActive = showCam || serverPresage;
+  // No camera preview: in bridge mode (default) the Presage bridge owns the webcam. Only server-side
+  // Presage needs the browser camera, and then it streams from a hidden <video>.
+  const camActive = serverPresage;
   const started = useRef(false);
   const recognizer = useRef(null);
   const videoRef = useRef(null);
@@ -51,6 +52,9 @@ export default function Interview({ session, onDone }) {
       if (msg.type === 'vitals') {
         setVitals((v) => [...v.slice(-300), msg]);
         setSnap({ state: msg.state, baseline: msg.baseline, baselineProgress: msg.baselineProgress });
+        if (Number.isFinite(msg.hr) && msg.state !== 'baseline') {
+          setStats((s) => ({ ...s, n: s.n + 1, sum: s.sum + msg.hr, peak: Math.max(s.peak, msg.hr), [msg.state]: (s[msg.state] || 0) + 1 }));
+        }
       }
       if (msg.type === 'utterance') setUtterances((u) => mergeUtterances(u, [msg]));
       if (msg.type === 'transcript') setUtterances((u) => mergeUtterances(u, msg.utterances));
@@ -69,13 +73,11 @@ export default function Interview({ session, onDone }) {
       .health()
       .then((h) => {
         setServerPresage(Boolean(h.presageServer));
-        if (h.presageServer) setShowCam(true);
       })
       .catch(() => {});
   }, []);
 
-  // Webcam. Server-side Presage: frames go to the backend (preview can be hidden, camera stays on).
-  // Laptop bridge: some systems only let one program use the camera, so if the preview fails, turn it off.
+  // Webcam, server-side Presage only: frames go to the backend from a hidden video.
   useEffect(() => {
     if (!camActive) return;
     let stream;
@@ -91,8 +93,7 @@ export default function Interview({ session, onDone }) {
         if (serverPresage && video) stopStreaming = startCameraStream(session.id, video);
       })
       .catch(() => {
-        setShowCam(false);
-        if (serverPresage) setSensor('Camera blocked. Allow camera access in the address bar to measure heart rate.');
+        setSensor('Camera blocked. Allow camera access in the address bar to measure heart rate.');
       });
     return () => {
       cancelled = true;
@@ -255,6 +256,16 @@ export default function Interview({ session, onDone }) {
 
   const latest = vitals.at(-1);
   const color = STATE_COLORS[snap.state];
+  // Breathing and HRV arrive less often than pulse, so show the newest reading that has one.
+  const lastWith = (key) => {
+    for (let i = vitals.length - 1; i >= 0; i--) if (Number.isFinite(vitals[i][key])) return vitals[i][key];
+    return null;
+  };
+  const br = lastWith('br');
+  const hrv = lastWith('hrv');
+  const conf = latest?.confidence;
+  const vsBaseline = latest && snap.baseline ? Math.round(((latest.hr - snap.baseline) / snap.baseline) * 100) : null;
+  const stateTotal = stats.calm + stats.elevated + stats.overloaded;
 
   return (
     <div className="interview">
@@ -287,16 +298,63 @@ export default function Interview({ session, onDone }) {
             ))}
         </div>
 
+        <div className="card">
+          <h4>More from Presage</h4>
+          <div className="tiles">
+            <div className="tile">
+              <span className="tile-label">Breathing</span>
+              <span className="tile-value">{br != null ? Math.round(br) : '--'} <small>/min</small></span>
+              <span className="tile-note">{breathNote(br)}</span>
+            </div>
+            <div className="tile">
+              <span className="tile-label">HRV</span>
+              <span className="tile-value">{hrv != null ? Math.round(hrv) : '--'} <small>ms</small></span>
+              <span className="tile-note">{hrv != null ? 'Lower usually means more stress' : 'Needs ~30 s of steady signal'}</span>
+            </div>
+            <div className="tile">
+              <span className="tile-label">vs. baseline</span>
+              <span className="tile-value" style={{ color: vsBaseline != null ? color : undefined }}>
+                {vsBaseline != null ? `${vsBaseline > 0 ? '+' : ''}${vsBaseline}%` : '--'}
+              </span>
+              <span className="tile-note">{snap.baseline ? `Resting ${Math.round(snap.baseline)} bpm` : 'Measuring'}</span>
+            </div>
+            <div className="tile">
+              <span className="tile-label">Signal</span>
+              <span className="tile-value">{Number.isFinite(conf) ? `${Math.round(conf * 100)}%` : '--'}</span>
+              <span className="tile-note">{signalNote(conf)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="row between">
+            <h4>This interview so far</h4>
+            <span className="muted small-text">
+              {stats.n ? `Avg ${Math.round(stats.sum / stats.n)} · Peak ${Math.round(stats.peak)} bpm` : 'Starts after baseline'}
+            </span>
+          </div>
+          <div className="state-bar" aria-label="Share of time in each stress state">
+            {['calm', 'elevated', 'overloaded'].map((s) =>
+              stats[s] ? <div key={s} style={{ flexGrow: stats[s], background: STATE_COLORS[s] }} /> : null
+            )}
+          </div>
+          <div className="state-legend">
+            {['calm', 'elevated', 'overloaded'].map((s) => (
+              <span key={s}>
+                <i style={{ background: STATE_COLORS[s] }} />
+                {s} {stateTotal ? Math.round((stats[s] / stateTotal) * 100) : 0}%
+              </span>
+            ))}
+          </div>
+        </div>
+
         {camActive && (
-          // When hidden but still measuring, keep the video "on screen" but invisible:
+          // Server-side Presage only: keep the video "on screen" but invisible, since
           // Chrome may pause videos that are display:none or offscreen.
-          <div className="card cam" style={showCam ? undefined : HIDDEN_BUT_PLAYING}>
+          <div style={HIDDEN_BUT_PLAYING}>
             <video ref={videoRef} autoPlay muted playsInline />
           </div>
         )}
-        <button className="link camera-preview-toggle" onClick={() => setShowCam((s) => !s)}>
-          {showCam ? 'Hide camera preview' : 'Show camera preview'}
-        </button>
       </div>
 
       <div className="right card">
@@ -389,4 +447,18 @@ function phaseLabel(p) {
     breathing: 'Breathing pause',
     ending: 'Building your replay...',
   }[p] || '';
+}
+
+function breathNote(br) {
+  if (br == null) return 'Waiting for a reading';
+  if (br < 10) return 'Slow and steady';
+  if (br <= 20) return 'Normal range';
+  return 'Fast, try a slow breath';
+}
+
+function signalNote(c) {
+  if (!Number.isFinite(c)) return 'How sure Presage is';
+  if (c >= 0.7) return 'Good lock on your pulse';
+  if (c >= 0.4) return 'Fair, hold still';
+  return 'Weak, check light and framing';
 }
