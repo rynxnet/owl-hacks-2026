@@ -27,6 +27,8 @@ export const presageLoadError = () => loadError;
 const WORKER = fileURLToPath(new URL('./presageWorker.js', import.meta.url));
 const MAX_IN_FLIGHT = 4; // frames sent but not yet processed; beyond this we drop (CPU can't keep up)
 
+// onReading({ hr, br, hrv, confidence, stable, ts }) is called once per Presage pulse sample, in order;
+// ts is the sample's own time in epoch ms (not the time it arrived). onStatus(text) gets positioning hints.
 export function createPresageSession({ onReading, onStatus }) {
   let child = null;
   let inFlight = 0;
@@ -38,7 +40,11 @@ export function createPresageSession({ onReading, onStatus }) {
     child = fork(WORKER, [], { serialization: 'advanced', stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
     child.on('message', (msg) => {
       if (msg.type === 'ack') inFlight = Math.max(0, inFlight - 1);
-      else if (msg.type === 'reading') onReading(msg);
+      else if (msg.type === 'reading') {
+        // Full reading: { hr, br, hrv, confidence, stable, ts } with ts = epoch ms of the Presage sample.
+        const { hr, br = null, hrv = null, confidence = null, stable = null, ts } = msg;
+        onReading({ hr, br, hrv, confidence, stable, ts });
+      }
       else if (msg.type === 'status') onStatus(msg.text);
       else if (msg.type === 'fatal') {
         console.error('[presage]', msg.text);

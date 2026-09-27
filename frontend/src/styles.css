@@ -29,6 +29,11 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.link { background: none; border: none; color: var(--muted); text-decoration: underline; padding: 6px; }
 input { font: inherit; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: #11141a; color: var(--text); margin-top: 6px; }
 input[type='range'] { padding: 0; }
+textarea { font: inherit; width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border); background: #fbfcfc; color: var(--text); margin-top: 6px; resize: vertical; min-height: 84px; font-weight: 400; }
+textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(20, 118, 109, 0.1); outline: none; }
+.hint { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.optional { font-weight: 400; color: var(--muted); }
+.role-tag { display: inline-block; margin-top: 4px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 label, .label { display: block; margin: 16px 0 6px; font-weight: 600; }
 
 .setup { max-width: 640px; margin: 40px auto; }
@@ -186,3 +191,9 @@ input[type='range'] { accent-color: var(--accent); }
   color: #77511b;
   font-size: 14px;
 }
+
+.error-screen { max-width: 720px; margin: 40px auto; }
+.error-screen h2 { margin-top: 0; }
+.error-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; font-size: 12px; padding: 10px 12px; border-radius: 6px; border: 1px solid #e3b7b3; background: #fbefee; color: #8a2f29; }
+.error-screen details { margin: 10px 0 16px; }
+.error-screen summary { cursor: pointer; color: var(--muted); }

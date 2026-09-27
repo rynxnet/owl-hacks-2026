@@ -16,7 +16,9 @@ const COACHING_ERRORS = {
 export default function Replay({ replay: initial, onRestart }) {
   const [replay, setReplay] = useState(initial);
   const [retrying, setRetrying] = useState(false);
-  useEffect(() => setReplay(initial), [initial]);
+  useEffect(() => {
+    setReplay(initial);
+  }, [initial]);
 
   const vitals = (replay.vitals || []).filter((v) => Number.isFinite(v?.hr) && Number.isFinite(v?.ts));
   const utterances = replay.utterances || [];

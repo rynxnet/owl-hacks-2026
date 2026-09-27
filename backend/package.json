@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
+    "test:unit": "node --test test/services.test.mjs",
     "sim": "node src/simulator.js",
     "db:init": "node src/initDb.js",
     "check:gemini": "node src/checkGemini.js",
@@ -22,7 +23,7 @@
     "jpeg-js": "^0.4.4"
   },
   "optionalDependencies": {
-    "@smartspectra/node-sdk": "latest"
+    "@smartspectra/node-sdk": "3.3.0"
   },
   "engines": {
     "node": ">=20"

@@ -56,7 +56,11 @@ export default function Interview({ session, onDone }) {
     });
   }, [session.id]);
 
-  useEffect(() => transcriptEnd.current?.scrollIntoView({ behavior: 'smooth' }), [utterances, partial]);
+  // Braces matter: newer Chrome returns a Promise from scrollIntoView(), and an effect that returns
+  // anything but a cleanup function crashes React ("destroy is not a function" -> white screen).
+  useEffect(() => {
+    transcriptEnd.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [utterances, partial]);
 
   // Does the backend run Presage itself? Then we stream our webcam to it.
   useEffect(() => {
@@ -257,6 +261,12 @@ export default function Interview({ session, onDone }) {
               {snap.baseline ? `Baseline ${Math.round(snap.baseline)} bpm` : 'Measuring baseline'}
               <br />
               {progress.max ? `Question ${progress.q} of ${progress.max}` : ''}
+              {session.role && (
+                <>
+                  <br />
+                  <span className="role-tag">{session.role}</span>
+                </>
+              )}
             </div>
           </div>
           {sensor && <p className="sensor-hint">📷 {sensor}</p>}
