@@ -153,7 +153,7 @@ export default function Interview({ session, onDone }) {
     setProgress({ q: turn.questionCount, max: turn.maxQuestions });
     if (turn.say) {
       setPhase('speaking');
-      await playLine(turn.say, turn.audio);
+      await playLine(turn.say, turn.audio, session.persona === 'rapid' ? 1.3 : 1.05);
       if (!active()) return;
     }
 

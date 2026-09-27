@@ -254,6 +254,58 @@ check('[feedback] returns coaching', fb.summary.startsWith('Strong process-tree'
 }
 
 // ---------------------------------------------------------------------------
+// 6b. Styles: friendly / cold / rapid shape the briefing and every turn
+// ---------------------------------------------------------------------------
+{
+  const RAPID_BRIEF = { ...BRIEFING, speakingStyle: 'Talks fast, never recaps, cuts to the next topic.' };
+  const rapid = { persona: 'rapid', role: 'Threat Hunter', jobDetails: `${POSTING}\n(rapid test)` };
+  const SHORT = { heard: 'rundll32 spawning from a Word macro', answerRead: 'strong', reaction: 'Macro to rundll32. Good.', question: 'First Falcon event you pivot on?', action: 'ask' };
+  const LONG = {
+    ...SHORT,
+    reaction:
+      'A macro spawning rundll32 is exactly the kind of tree our OverWatch team flags every day, and pivoting on the parent process is the right instinct because it shows you are thinking about how the intrusion actually started on that host.',
+    question: 'If that rundll32 then touched LSASS, what would you pull from Falcon before you called the customer and why?',
+  };
+
+  reset({ turnReplies: [SHORT] });
+  globalThis.__briefingReply = RAPID_BRIEF;
+  const r1 = await iv.nextTurn({ ...rapid, history: history1, state: 'calm', questionCount: 1, maxQuestions: 5 });
+  const rb = String(globalThis.__briefingCalls[0]?.contents || '');
+  check('[style] rapid briefing asks for a fast, time-boxed interviewer', /time-boxed/.test(rb) && /rapid-fire/.test(rb), rb.slice(0, 300));
+  check('[style] briefing schema asks for speakingStyle', Boolean(globalThis.__briefingCalls[0]?.config?.responseJsonSchema?.properties?.speakingStyle));
+  const rc = globalThis.__turnCalls[0]?.config || {};
+  check('[style] rapid turn uses MINIMAL thinking', rc.thinkingConfig?.thinkingLevel === 'MINIMAL', JSON.stringify(rc.thinkingConfig));
+  check('[style] rapid system prompt has the pace rules', /under 30 words/.test(rc.systemInstruction) && /PACE BEATS EVERYTHING/.test(rc.systemInstruction) && /one follow-up max/.test(rc.systemInstruction));
+  check('[style] rapid system prompt carries the briefed speaking style', rc.systemInstruction.includes('HOW YOU RUN INTERVIEWS: Talks fast'));
+  check('[style] rapid schema asks for a clipped reaction', /clipped 2-8 word/.test(rc.responseJsonSchema?.properties?.reaction?.description || ''));
+  check('[style] rapid short reply used in one call', r1.say === 'Macro to rundll32. Good. First Falcon event you pivot on?' && globalThis.__turnCalls.length === 1, JSON.stringify(r1));
+
+  reset({ turnReplies: [LONG, SHORT] });
+  globalThis.__briefingReply = RAPID_BRIEF;
+  const r2 = await iv.nextTurn({ ...rapid, history: history1, state: 'calm', questionCount: 1, maxQuestions: 5 });
+  const retryPrompt = String(globalThis.__turnCalls[1]?.contents || '');
+  check('[style] rapid: too-long draft gets one rewrite', globalThis.__turnCalls.length === 2 && /too long for this style/.test(retryPrompt) && r2.say.startsWith('Macro to rundll32'), `${globalThis.__turnCalls.length} ${r2.say}`);
+
+  const REPEAT = { ...SHORT, question: "What's the most hands-on EDR work you've done?" };
+  reset({ turnReplies: [REPEAT, SHORT] });
+  globalThis.__briefingReply = RAPID_BRIEF;
+  await iv.nextTurn({ ...rapid, history: history1, state: 'calm', questionCount: 1, maxQuestions: 5 });
+  check('[style] rapid: minor issue (near-repeat) skips the rewrite', globalThis.__turnCalls.length === 1, globalThis.__turnCalls.length);
+
+  check('[style] review: long reply flagged only for rapid', iv.reviewTurn(iv.normalizeTurn(LONG, 'calm'), { history: history1, persona: 'rapid' }).some((i) => i.startsWith('too long')) && !iv.reviewTurn(iv.normalizeTurn(LONG, 'calm'), { history: history1, persona: 'cold' }).some((i) => i.startsWith('too long')));
+
+  reset({ turnReplies: [GOOD] });
+  await iv.nextTurn({ ...setup2, jobDetails: `${setup2.jobDetails} (style test)`, history: [], state: 'calm', questionCount: 0, maxQuestions: 5 });
+  const fc = globalThis.__turnCalls[0]?.config || {};
+  const fb = String(globalThis.__briefingCalls[0]?.contents || '');
+  check('[style] friendly: warm briefing, normal thinking, no rapid pace rule', /approachable/.test(fb) && fc.thinkingConfig?.thinkingLevel === 'LOW' && !/PACE BEATS/.test(fc.systemInstruction) && /2-4 natural spoken sentences/.test(fc.systemInstruction));
+  const fo = String(globalThis.__turnCalls[0]?.contents || '');
+  check('[style] friendly opener introduces warmly with context', /Introduce yourself warmly/.test(fo));
+
+  check('[style] PERSONAS still lists every style for the server', Object.keys(iv.PERSONAS).join() === 'friendly,cold,rapid');
+}
+
+// ---------------------------------------------------------------------------
 // 7. No API key: a clear error, never canned questions
 // ---------------------------------------------------------------------------
 const self = fileURLToPath(import.meta.url);

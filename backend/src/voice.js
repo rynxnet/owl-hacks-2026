@@ -4,7 +4,7 @@ import { config } from './config.js';
 const DELIVERY = {
   friendly: { stability: 0.45, similarity_boost: 0.75, style: 0.3, speed: 1.0 },
   cold: { stability: 0.8, similarity_boost: 0.75, style: 0.05, speed: 0.95 },
-  rapid: { stability: 0.4, similarity_boost: 0.75, style: 0.2, speed: 1.15 },
+  rapid: { stability: 0.4, similarity_boost: 0.75, style: 0.2, speed: 1.2 }, // 1.2 is ElevenLabs' max
 };
 
 let warned = false;
