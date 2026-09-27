@@ -27,7 +27,6 @@ Built at **OwlHacks 2026** (Temple University) with Google Gemini, ElevenLabs, a
 - [Testing](#testing)
 - [API reference](#api-reference)
 - [Deployment](#deployment)
-- [Team](#team)
 
 ## Features
 
@@ -256,16 +255,7 @@ cd ../backend && npm install && npm start     # serves the app on PORT (default 
   `VITALS_URL=wss://your-domain/ws/vitals` in `presage-bridge/.env`.
 - `/ws/vitals` has no authentication, so keep deployments private to the demo.
 
-## Team
-
-Built by the OwlHacks 2026 team:
-
-| Contributor | Focus |
-| --- | --- |
-| [@rynxnet](https://github.com/rynxnet) | AI interviewer agent, Presage integration, backend |
-| [@LouGotCash](https://github.com/LouGotCash) | Frontend: interview and replay UI |
-| [@JWS2028](https://github.com/JWS2028) | Frontend |
-| [@VapeurCat](https://github.com/VapeurCat) | Backend service structure, branding |
+---
 
 Powered by [Google Gemini](https://ai.google.dev), [ElevenLabs](https://elevenlabs.io) and
 [Presage SmartSpectra](https://github.com/Presage-Security/SmartSpectra).
