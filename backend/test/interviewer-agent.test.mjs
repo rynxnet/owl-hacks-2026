@@ -274,7 +274,7 @@ check('[feedback] returns coaching', fb.summary.startsWith('Strong process-tree'
   check('[style] rapid briefing asks for a fast, time-boxed interviewer', /time-boxed/.test(rb) && /rapid-fire/.test(rb), rb.slice(0, 300));
   check('[style] briefing schema asks for speakingStyle', Boolean(globalThis.__briefingCalls[0]?.config?.responseJsonSchema?.properties?.speakingStyle));
   const rc = globalThis.__turnCalls[0]?.config || {};
-  check('[style] rapid turn uses MINIMAL thinking', rc.thinkingConfig?.thinkingLevel === 'MINIMAL', JSON.stringify(rc.thinkingConfig));
+  check('[style] rapid turn uses LOW thinking (MINIMAL is rejected by some models)', rc.thinkingConfig?.thinkingLevel === 'LOW', JSON.stringify(rc.thinkingConfig));
   check('[style] rapid system prompt has the pace rules', /under 30 words/.test(rc.systemInstruction) && /PACE BEATS EVERYTHING/.test(rc.systemInstruction) && /one follow-up max/.test(rc.systemInstruction));
   check('[style] rapid system prompt carries the briefed speaking style', rc.systemInstruction.includes('HOW YOU RUN INTERVIEWS: Talks fast'));
   check('[style] rapid schema asks for a clipped reaction', /clipped 2-8 word/.test(rc.responseJsonSchema?.properties?.reaction?.description || ''));
