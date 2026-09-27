@@ -161,7 +161,7 @@ export default function Replay({ replay: initial, onRestart }) {
         {utterances.length === 0 && <p className="muted">Nothing was said in this interview.</p>}
         <div style={{ maxHeight: 480, overflowY: 'auto' }}>
           {utterances.map((u, i) => (
-            <p key={i}>
+            <p key={i} className={`replay-transcript-line ${u.speaker === 'interviewer' ? 'interviewer' : ''}`}>
               <span className="tag" style={{ background: STATE_COLORS[u.state] || '#8a8f98' }}>{u.state || 'n/a'}</span>{' '}
               <strong>{u.speaker === 'interviewer' ? 'Interviewer' : 'You'}:</strong> {u.text}
             </p>
