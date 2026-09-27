@@ -196,7 +196,7 @@ check('[review] breathe outside overload becomes a question turn', iv.normalizeT
 // ---------------------------------------------------------------------------
 reset({ turnMode: 'error' });
 const apiFail = await attempt(iv.nextTurn({ ...setup, history: history1, state: 'calm', questionCount: 1, maxQuestions: 5 }));
-check('[error] Gemini API failure -> InterviewerError (no canned line)', apiFail.error?.code === 'AI_INTERVIEWER_FAILED' && /could not be generated: Gemini request failed \(429/.test(apiFail.error.message), apiFail.error?.message || JSON.stringify(apiFail.value));
+check('[error] Gemini API failure -> InterviewerError (no canned line)', apiFail.error?.code === 'AI_INTERVIEWER_FAILED' && /could not be generated: Gemini quota used up \(429\)/.test(apiFail.error.message), apiFail.error?.message || JSON.stringify(apiFail.value));
 
 const setup2 = { persona: 'friendly', role: 'Registered Nurse', jobDetails: 'Acme Health ICU nurse. Ventilator management.' };
 reset({ briefingMode: 'error', turnReplies: [GOOD] });
