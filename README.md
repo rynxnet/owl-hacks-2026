@@ -41,28 +41,36 @@ Needs Node 20 or newer and Chrome (for speech recognition).
 ```bash
 # terminal 1: backend
 cd backend
-cp .env.example .env      # add keys later; everything works without them
+cp .env.example .env      # Windows: copy .env.example .env   then set GEMINI_API_KEY (required)
 npm install
 npm run dev
 
-# terminal 2: fake heart rate (or real: see presage-bridge/README.md)
-cd backend
-npm run sim               # press u / d / s to push heart rate up, down, or spike
+# terminal 2: real heart rate from the webcam (Presage bridge), started BEFORE opening the app
+cd presage-bridge
+npm install
+npm start                 # key from presage-bridge/.env or backend/.env; restarts Presage itself if it stalls
+#   no camera / demo backup instead:  cd backend && npm run sim   (u / d / s = heart rate up, down, spike)
 
 # terminal 3: frontend
 cd frontend
 npm install
-npm run dev               # open http://localhost:5173
+npm run dev               # open Chrome at http://localhost:5173
 ```
 
-Without keys: questions come from a built-in list, the browser reads them aloud, and data stays in memory.
+Heart rate uses the **bridge** by default (`PRESAGE_MODE=bridge`): the bridge owns the webcam, the backend
+never runs Presage, and the app's camera preview starts off so it can't take the camera away from the bridge.
+Close other apps using the camera (Teams, Zoom) before `npm start`. Only set `PRESAGE_MODE=server` if you want
+the browser to stream the webcam to the backend instead, and then don't run the bridge.
+
+Gemini is required: every interviewer line is generated live (see below). Without an ElevenLabs key the
+browser reads lines aloud; without Tiger Data everything stays in memory.
 Add keys to `backend/.env` to switch on each sponsor tool:
 
 | Key | Turns on |
 | --- | --- |
 | `GEMINI_API_KEY` | **Required.** The AI interviewer and written coaching. Test with `npm run check:gemini` |
 | `ELEVENLABS_API_KEY` (optional `VOICE_FRIENDLY` / `VOICE_COLD` / `VOICE_RAPID`) | Realistic interviewer voices, one per persona. Test with `npm run voices` |
-| `PRESAGE_API_KEY` | Real heart rate: the browser streams its webcam to the backend and Presage reads your pulse there. Test with `npm run check:presage` |
+| `PRESAGE_API_KEY` (+ `PRESAGE_MODE`, default `bridge`) | Real heart rate. Bridge mode: used by `presage-bridge` (this file is its fallback). Server mode: the browser streams the webcam to the backend. Test with `npm run check:presage` |
 | `DATABASE_URL` (Tiger Data) | Saves vitals and transcripts. Run `npm run db:init` once to create tables |
 
 The setup screen shows which of these are on.

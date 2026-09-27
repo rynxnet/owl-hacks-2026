@@ -70,7 +70,8 @@ app.get('/api/health', (_req, res) => {
     vitalsSources: vitalsSockets.size,
     sensorStatus: vitalsService.sensorStatus,
     presageServer: presageAvailable(),
-    presageError: config.presageKey && !presageAvailable() ? presageLoadError() : undefined,
+    presageError: config.presageMode === 'server' && config.presageKey && !presageAvailable() ? presageLoadError() : undefined,
+    presageMode: config.presageMode,
     personas: Object.keys(PERSONAS),
   });
 });
@@ -275,4 +276,10 @@ server.listen(config.port, () => {
       config.elevenKey ? 'on' : 'off (browser voice)'
     } | Tiger Data: ${dbEnabled ? 'on' : 'off (memory only)'}`,
   );
+  if (config.presageMode === 'server') {
+    console.log(`  Heart rate: SERVER mode (browser streams the webcam here). Presage ${presageAvailable() ? 'ready' : `not ready: ${presageLoadError() || 'PRESAGE_API_KEY is empty'}`}. Do NOT also run the bridge.`);
+  } else {
+    console.log('  Heart rate: BRIDGE mode. Start it in another terminal: cd presage-bridge && npm start (or npm run sim here).');
+    if (config.presageKey) console.log('  (PRESAGE_API_KEY in backend/.env is not used by the backend in bridge mode; the bridge can read it from here.)');
+  }
 });

@@ -51,14 +51,18 @@ https://smartspectra.presagetech.com/docs/nodejs/api-reference/ and https://smar
 - Error codes: 1 invalid state, 2 auth failed, 3 config failed, 4 credits exhausted, 5 network, 6 server,
   7 input unavailable, 8 processing failed, 9 frame conversion failed, 10 non-monotonic timestamp, 11 timestamp gap.
 
-## Easiest: let the backend run Presage (no bridge needed)
+## Default: laptop bridge (`presage.js`, the setup that works)
 
-Put `PRESAGE_API_KEY=...` in **`backend/.env`**, run `npm install` and `npm run check:presage` in `backend/`, and restart it.
-`npm run check:presage -- --live` also starts a real SDK session and feeds it 5 s of test frames.
-The browser then streams its webcam to the backend (`/ws/camera`) and Presage runs there, whether that's a
-Codespace, Vultr, or your laptop. Use the bridge below only if that doesn't work (for example, a slow network).
+The backend runs in `PRESAGE_MODE=bridge` by default: it never runs Presage itself, even if `backend/.env`
+has a key, and the app's camera preview starts off. The bridge is the only thing using the webcam.
 
-## Alternative: laptop bridge (`presage.js`)
+`npm start` runs `start.js`, which runs `presage.js` and restarts it automatically:
+- after a Presage error (e.g. 8 "SmartSpectra processing failed"), if no data arrives within `STALL_MS` (6 s)
+- after a crash (gives up after 8 restarts in 2 minutes)
+- it stops for good on setup problems (no key, key rejected, no credits) and says so.
+
+The key is read from `presage-bridge/.env`, or from `backend/.env` if that one is empty. The first line
+printed says which (`[bridge] Presage key from ...`).
 
 Presage ships a Node.js SDK (`@smartspectra/node-sdk`) with prebuilt native code for Windows x64,
 macOS Apple Silicon and Linux x64/arm64 (glibc 2.35+). No C++ build. Needs Node 20+. The bridge shares
@@ -85,6 +89,13 @@ if the preview then fails, the app hides it automatically. If the bridge reports
 camera apps (Teams, Zoom, the preview) and restart it.
 
 **Wrong camera?** Set `CAMERA_INDEX=1` (or 2...) in `.env`.
+
+## Alternative: backend runs Presage (`PRESAGE_MODE=server`)
+
+Set `PRESAGE_MODE=server` and `PRESAGE_API_KEY=...` in **`backend/.env`**, run `npm install` and
+`npm run check:presage` in `backend/`, and restart it. The browser then streams its webcam to the backend
+(`/ws/camera`) and Presage runs there. **Don't run the bridge at the same time**: both would use the webcam,
+which causes "processing failed" errors. This path was less reliable in testing than the bridge.
 
 ## Fallbacks (C++ sample, mobile)
 

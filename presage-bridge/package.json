@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node presage.js",
+    "start": "node start.js",
+    "presage": "node presage.js",
     "relay": "node relay.js"
   },
   "dependencies": {

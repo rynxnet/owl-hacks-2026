@@ -65,7 +65,13 @@ try {
 }
 
 if (!LIVE) {
-  console.log(config.presageKey ? '\nReady. Restart the backend; the setup screen should show "Presage (webcam)".' : '');
+  console.log(
+    config.presageKey
+      ? config.presageMode === 'server'
+        ? '\nReady. PRESAGE_MODE=server: restart the backend; the setup screen should show "Presage (webcam)".'
+        : '\nKey and SDK OK. PRESAGE_MODE is bridge (default): heart rate comes from presage-bridge (cd presage-bridge && npm start).'
+      : '',
+  );
   console.log('Run with --live to start a real SDK session with synthetic frames.');
   process.exit(0);
 }

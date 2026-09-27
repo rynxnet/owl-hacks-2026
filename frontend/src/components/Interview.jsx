@@ -17,7 +17,9 @@ export default function Interview({ session, onDone }) {
   const [typed, setTyped] = useState('');
   const [recording, setRecording] = useState(false);
   const [progress, setProgress] = useState({ q: 0, max: 0 });
-  const [showCam, setShowCam] = useState(true);
+  // Preview starts off: with the laptop bridge (default), the bridge owns the webcam and a browser preview
+  // would compete with it. Server-side Presage turns it on (the browser must stream the camera then).
+  const [showCam, setShowCam] = useState(false);
   const [turnError, setTurnError] = useState(null); // { answer, turnId } when the backend didn't respond
   const [sensor, setSensor] = useState(''); // Presage hint, e.g. "No face found"
   const [serverPresage, setServerPresage] = useState(false); // backend reads heart rate from our camera
@@ -64,7 +66,13 @@ export default function Interview({ session, onDone }) {
 
   // Does the backend run Presage itself? Then we stream our webcam to it.
   useEffect(() => {
-    api.health().then((h) => setServerPresage(Boolean(h.presageServer))).catch(() => {});
+    api
+      .health()
+      .then((h) => {
+        setServerPresage(Boolean(h.presageServer));
+        if (h.presageServer) setShowCam(true);
+      })
+      .catch(() => {});
   }, []);
 
   // Webcam. Server-side Presage: frames go to the backend (preview can be hidden, camera stays on).

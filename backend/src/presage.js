@@ -2,8 +2,9 @@
 // SmartSpectra SDK reads heart rate from them. The SDK runs in a separate child process
 // (presageWorker.js) so an error or native crash only loses heart rate, never the interview.
 //
-// Optional: if PRESAGE_API_KEY is empty or the SDK isn't installed, presageAvailable() is false
-// and the app falls back to the laptop bridge (presage-bridge/) or the simulator.
+// Only used with PRESAGE_MODE=server. The default is PRESAGE_MODE=bridge: heart rate comes from the laptop
+// bridge (presage-bridge/) or the simulator, and presageAvailable() is always false, so the browser never
+// streams the webcam here and never competes with the bridge for the camera.
 import { fork } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +12,8 @@ import { config } from './config.js';
 
 const require = createRequire(import.meta.url);
 let loadError = '';
-if (config.presageKey) {
+const serverMode = config.presageMode === 'server';
+if (serverMode && config.presageKey) {
   try {
     require.resolve('@smartspectra/node-sdk');
     require.resolve('jpeg-js');
@@ -21,7 +23,7 @@ if (config.presageKey) {
   }
 }
 
-export const presageAvailable = () => Boolean(config.presageKey) && !loadError;
+export const presageAvailable = () => serverMode && Boolean(config.presageKey) && !loadError;
 export const presageLoadError = () => loadError;
 
 const WORKER = fileURLToPath(new URL('./presageWorker.js', import.meta.url));

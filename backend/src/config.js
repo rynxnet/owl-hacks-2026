@@ -19,6 +19,10 @@ export const config = {
 
   // Presage (heart rate from the webcam). With a key, the backend reads frames the browser streams to it.
   presageKey: process.env.PRESAGE_API_KEY || '',
+  // Where heart rate comes from. "bridge" (default, the setup that works): presage-bridge/ on the laptop
+  // opens the webcam and sends readings to /ws/vitals; the backend never runs Presage itself, even if
+  // PRESAGE_API_KEY is set here. "server": the browser streams its webcam to the backend and Presage runs here.
+  presageMode: (process.env.PRESAGE_MODE || 'bridge').trim().toLowerCase() === 'server' ? 'server' : 'bridge',
   presageMinConfidence: Number(process.env.PRESAGE_MIN_CONFIDENCE || 0),
 
   // Tiger Data (Postgres + time-series). Without a URL everything stays in memory.
